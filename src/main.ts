@@ -10,7 +10,7 @@ const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.
 type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
 type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
-type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number };
+type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number };
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -23,6 +23,7 @@ app.innerHTML = `
   <div class="menu-actions"><button id="menu-single" class="primary big">SINGLE PLAYER <small>CONFIGURE A SOLO CAMPAIGN</small></button><button id="menu-multi" class="secondary big">MULTIPLAYER <small>JOIN THE ONLINE WORLD</small></button></div>
   <details class="match-setup" open><summary>SOLO MATCH SETUP</summary>
    <div class="setup-grid">
+    <label>MODE <select id="solo-mode"><option value="ffa">Free for All</option><option value="duos">Duos</option><option value="trios">Trios</option><option value="squads">Squads</option></select></label>
     <label>MAP <select id="solo-map"><option value="continents">Continents</option><option value="islands">Island Chain</option><option value="pangaea">Pangaea</option><option value="highlands">Highlands</option></select></label>
     <label>AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label>
     <label>AI DIFFICULTY <select id="solo-difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
@@ -87,7 +88,7 @@ let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
-let soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloSpeed=1,soloPaused=false,matchWinner:string|null=null;
+let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloSpeed=1,soloPaused=false,matchWinner:string|null=null;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
@@ -122,6 +123,7 @@ function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);
  selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;resetCamera();
+ soloMode=(el('solo-mode') as HTMLSelectElement).value as typeof soloMode;
  soloMap=(el('solo-map') as HTMLSelectElement).value;
  soloBotCount=Number((el('solo-bots') as HTMLSelectElement).value);
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
@@ -129,7 +131,8 @@ function startSinglePlayer(){
  const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f','#57b78a','#d77eb0','#78aeb5','#c18b62'];
  const commanders=[nickname,'Astra','Vex','Orion','Nova','Mako','Sable','Atlas'];
  const starts=[305,354,2045,2094,330,2070,1205,1254];
- const players:Player[]=commanders.slice(0,soloBotCount+1).map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
+ const teamSize=soloMode==='duos'?2:soloMode==='trios'?3:soloMode==='squads'?4:1;
+ const players:Player[]=commanders.slice(0,soloBotCount+1).map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!,team:Math.floor(i/teamSize)}));
  const tiles:Tile[]=Array.from({length:2400},(_,i)=>{
   const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;
   const edge=x<2||y<2||x>=58||y>=38;
@@ -146,7 +149,7 @@ function startSinglePlayer(){
  (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
  (el('speed-solo') as HTMLButtonElement).textContent='1× SPEED';
  el('match-banner').classList.add('hidden');
- report(players.length===1?'Empty frontier. Expand and reach the land victory target.':players.length-1+' AI commanders · '+soloDifficulty.toUpperCase()+' · '+soloMap.toUpperCase()+'. Click adjacent territory to expand.');
+ report(players.length===1?'Empty frontier. Expand and reach the land victory target.':players.length-1+' AI commanders · '+soloMode.toUpperCase()+' · '+soloDifficulty.toUpperCase()+' · '+soloMap.toUpperCase()+'.');
  render();resetSoloTimer();
 }
 function resetSoloTimer(){
@@ -157,13 +160,23 @@ function checkSoloWinner(){
  if(!game||mode!=='single'||matchWinner)return;
  const playable=game.tiles.filter(t=>t.terrain!=='water'&&t.terrain!=='mountain').length;
  if(!playable)return;
- const winner=game.players.find(p=>game!.tiles.filter(t=>t.owner===p.id).length/playable>=soloWinPercent/100);
+ const groups=new Map<number,{name:string;id:string;land:number}>();
+ for(const p of game.players){
+  const team=soloMode==='ffa'?game.players.indexOf(p):(p.team??0);
+  const current=groups.get(team)||{name:p.name,id:p.id,land:0};
+  current.land+=game.tiles.filter(t=>t.owner===p.id).length;
+  if(p.id==='human'||(!current.name&&p.name))current.name=p.name;
+  if(p.id==='human')current.id=p.id;
+  groups.set(team,current);
+ }
+ const winner=[...groups.values()].find(group=>group.land/playable>=soloWinPercent/100);
  if(!winner)return;
  matchWinner=winner.name;soloPaused=true;if(localTimer)clearInterval(localTimer);
- el('match-result').textContent=winner.id==='human'?'VICTORY':'DEFEAT';
- el('match-result-detail').textContent=winner.name+' reached '+soloWinPercent+'% of playable land.';
+ const isPlayerTeam=soloMode==='ffa'?winner.id==='human':game.players.some(p=>p.id==='human'&&(p.team??0)===[...groups.entries()].find(([,g])=>g===winner)?.[0]);
+ el('match-result').textContent=isPlayerTeam?'VICTORY':'DEFEAT';
+ el('match-result-detail').textContent=(soloMode==='ffa'?winner.name:'Team '+(game.players.find(p=>p.id===winner.id)?.team!==undefined?(game.players.find(p=>p.id===winner.id)!.team!+1):1))+' reached '+soloWinPercent+'% of playable land.';
  el('match-banner').classList.remove('hidden');
- report(winner.name+' won the campaign. Start a new match to play again.');
+ report(winner.name+' and their team won the campaign. Start a new match to play again.');
 }
 el('pause-solo').addEventListener('click',()=>{
  if(mode!=='single'||matchWinner)return;
@@ -180,6 +193,7 @@ el('speed-solo').addEventListener('click',()=>{
 el('new-solo').addEventListener('click',()=>{startSinglePlayer();});
 function localClaim(targetIndex:number,percent:number){
  if(!game)return false;const tile=game.tiles[targetIndex];if(!tile||tile.owner===myId||tile.terrain==='mountain'||tile.terrain==='water')return false;
+ const targetPlayer=game.players.find(p=>p.id===tile.owner),self=game.players.find(p=>p.id===myId);if(targetPlayer&&self&&soloMode!=='ffa'&&targetPlayer.team===self.team){report('That territory belongs to an ally.');return false;}
  const adjacent=neighborsLocal(targetIndex).filter(n=>game!.tiles[n]!.owner===myId).sort((a,b)=>game!.tiles[b]!.troops-game!.tiles[a]!.troops);
  if(!adjacent.length)return false;const source=game.tiles[adjacent[0]!]!;const sent=Math.floor(source.troops*percent/100);if(sent<1)return false;
  const defense=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));source.troops-=sent;
@@ -202,7 +216,7 @@ function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild
 function localRecruit(player:Player){if(!game||player.gold<25)return;const home=game.tiles[player.home];if(home?.owner===player.id){player.gold-=25;home.troops+=15;}}
 function botTurn(bot:Player){
  if(!game)return;const owned=game.tiles.map((t,i)=>t.owner===bot.id?i:-1).filter(i=>i>=0);if(!owned.length)return;
- const opts=owned.flatMap(i=>neighborsLocal(i).filter(n=>game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain'&&game!.tiles[n]!.terrain!=='water').map(n=>({source:i,target:n,t:game!.tiles[n]!})));
+ const opts=owned.flatMap(i=>neighborsLocal(i).filter(n=>{const owner=game!.players.find(p=>p.id===game!.tiles[n]!.owner);return game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain'&&game!.tiles[n]!.terrain!=='water'&&!(soloMode!=='ffa'&&owner&&owner.team===bot.team);}).map(n=>({source:i,target:n,t:game!.tiles[n]!})));
  const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
  opts.sort((a,b)=>{const score=(o:typeof opts[number])=>(o.t.owner?15:8)+(o.t.troops*.35)+(neighborsLocal(o.target).filter(n=>game!.tiles[n]!.owner!==bot.id).length*2)+(personality==='builder'&&!o.t.owner?5:0)+(personality==='raider'&&o.t.owner?7:0);return score(b)-score(a);});
  const pick=opts.find(o=>o.source!==bot.home||game!.tiles[o.source]!.troops>12);if(!pick)return;
