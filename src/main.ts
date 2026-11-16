@@ -61,6 +61,7 @@ app.innerHTML = `
  </div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
  <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">🧭 SELECT A SOURCE · CLICK A DESTINATION TO MARCH TROOPS</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
+ <div class="minimap-panel"><div>🧭 WORLD RADAR <span>CLICK TO JUMP</span></div><canvas id="mini-map" width="180" height="180"></canvas></div>
  <div class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ SELECTED TILE</small><b id="available-troops">0</b></div><div class="troop-stock"><div class="troop-stock-label"><small>⚔ TOTAL ARMY</small><b id="troop-cap-label">0 / 0</b></div><div class="troop-stock-track"><i id="troop-cap-fill"></i></div></div></div>
   <div class="dock-main">
@@ -110,6 +111,7 @@ let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=fal
 let cameraZoom=8,cameraX=500,cameraY=500,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null,hoverTile=-1;
 let requestedChunks=new Set<string>(),receivedChunks=new Set<string>();
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
+const miniMap=el('mini-map') as HTMLCanvasElement,miniCtx=miniMap.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
 function showScreen(name:'menu'|'game'|'settings'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');}
