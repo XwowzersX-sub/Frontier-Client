@@ -597,8 +597,8 @@ function advanceLocalShips(){
 function localTick(){
  if(!game||mode!=='single'||soloPaused||matchWinner)return;
  game.tick++;
- const summary=new Map<string,{land:number;troops:number;cityLevels:number;income:number;owned:number[]}>();
- for(const p of game.players)summary.set(p.id,{land:0,troops:0,cityLevels:0,income:0,owned:[]});
+ const summary=new Map<string,{land:number;troops:number;cityLevels:number;farms:number;income:number;owned:number[]}>();
+ for(const p of game.players)summary.set(p.id,{land:0,troops:0,cityLevels:0,farms:0,income:0,owned:[]});
  for(let i=0;i<game.tiles.length;i++){
   const tile=game.tiles[i];if(!tile||!tile.owner)continue;
   const stats=summary.get(tile.owner);if(!stats)continue;
@@ -608,6 +608,7 @@ function localTick(){
    if(building.type==='factory')stats.income+=3;
    if(building.type==='port')stats.income+=2;
    if(building.type==='market')stats.income+=4;
+   if(building.type==='farm')stats.farms++;
   }
  }
  for(const p of game.players){
@@ -617,7 +618,7 @@ function localTick(){
   if(soloInfiniteTroops&&p.id==='human'){for(const i of stats.owned){const t=game.tiles[i]!;t.troops=9999;}}
   else if(game.tick%2===0&&stats.owned.length){
    const home=game.tiles[p.home]?.owner===p.id?p.home:stats.owned[0]!;
-   const growth=(2+Math.sqrt(stats.troops)*.08)*(1-stats.troops/Math.max(1,maxTroops))*(1-workers/135);
+   const growth=(2+Math.sqrt(stats.troops)*.08)*(1+Math.min(12,stats.farms)*.08)*(1-stats.troops/Math.max(1,maxTroops))*(1-workers/135);
    const add=Math.max(0,Math.floor(growth));if(add)game.tiles[home]!.troops+=add;
   }
  }
