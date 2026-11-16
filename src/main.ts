@@ -10,7 +10,6 @@ const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain'; troops: number };
 type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number };
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number };
-let socket: WebSocket | null = null, game: GameState | null = null, myId = '', selected = -1, reconnecting = false, mode: 'single' | 'multi' = 'single', localTimer: ReturnType<typeof setInterval> | null = null;
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
 <div id="main-menu" class="screen menu-screen">
