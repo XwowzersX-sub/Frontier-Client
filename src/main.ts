@@ -20,7 +20,15 @@ app.innerHTML = `
   <div class="eyebrow">COMMANDER ACCESS</div>
   <h1>Choose your<br><em>frontier.</em></h1>
   <label class="field-label" for="nickname">COMMANDER NAME</label><input id="nickname" maxlength="18" placeholder="Enter nickname" autocomplete="nickname">
-  <div class="menu-actions"><button id="menu-single" class="primary big">SINGLE PLAYER <small>PLAY AGAINST AI COMMANDERS</small></button><button id="menu-multi" class="secondary big">MULTIPLAYER <small>JOIN THE ONLINE WORLD</small></button></div>
+  <div class="menu-actions"><button id="menu-single" class="primary big">SINGLE PLAYER <small>CONFIGURE A SOLO CAMPAIGN</small></button><button id="menu-multi" class="secondary big">MULTIPLAYER <small>JOIN THE ONLINE WORLD</small></button></div>
+  <details class="match-setup" open><summary>SOLO MATCH SETUP</summary>
+   <div class="setup-grid">
+    <label>MAP <select id="solo-map"><option value="continents">Continents</option><option value="islands">Island Chain</option><option value="pangaea">Pangaea</option><option value="highlands">Highlands</option></select></label>
+    <label>AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label>
+    <label>AI DIFFICULTY <select id="solo-difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
+    <label>LAND WIN TARGET <select id="solo-win"><option value="60">60%</option><option value="70">70%</option><option value="80" selected>80%</option><option value="90">90%</option></select></label>
+   </div>
+  </details>
   <details class="account-details"><summary>ACCOUNT / SIGN IN</summary><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your account identity.</p></details>
   <button id="menu-settings" class="text-button">⚙ SETTINGS</button>
  </div><div class="menu-version">PIXEL FRONTIER · REALM CONQUEST · BETA</div>
@@ -37,8 +45,9 @@ app.innerHTML = `
  <div class="world-topbar">
   <div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div>
   <div class="world-metrics"><span>COMMANDER <b id="commander-label">COMMANDER</b></span><span>GOLD <b id="gold">0</b></span><span>LAND <b id="territory">0</b></span><span>TURN <b id="turn">0</b></span><span>ONLINE <b id="online">0</b></span></div>
-  <div class="world-actions"><button id="game-settings" class="world-icon">⚙</button><button id="main-menu" class="world-icon">MENU</button></div>
+  <div class="world-actions"><div class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙</button><button id="main-menu" class="world-icon">MENU</button></div>
  </div>
+ <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
  <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">CLICK YOUR LAND TO SELECT IT · CLICK ADJACENT LAND TO EXPAND</span><span id="score">SCORE 0</span></div>
  <div class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>TROOPS</small><b id="available-troops">0</b></div></div>
@@ -78,6 +87,7 @@ let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
+let soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloSpeed=1,soloPaused=false,matchWinner:string|null=null;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
@@ -96,7 +106,7 @@ function openSettings(){previousScreen=game?'game':'menu';applySettings();showSc
 el('menu-settings').addEventListener('click',openSettings);el('game-settings').addEventListener('click',openSettings);
 el('settings-close').addEventListener('click',()=>showScreen(previousScreen));
 el('settings-save').addEventListener('click',()=>{settings={pixelScale:Number((el('pixel-scale') as HTMLSelectElement).value),grid:(el('grid-toggle') as HTMLInputElement).checked,sound:(el('sound-toggle') as HTMLInputElement).checked,counts:(el('count-toggle') as HTMLInputElement).checked};localStorage.setItem('frontier-settings',JSON.stringify(settings));draw();showScreen(game?'game':'menu');});
-el('main-menu').addEventListener('click',()=>{if(localTimer)clearInterval(localTimer);if(socket){socket.close();socket=null;}game=null;selectedSource=-1;activeBuilding=null;showScreen('menu');});
+el('main-menu').addEventListener('click',()=>{if(localTimer)clearInterval(localTimer);if(socket){socket.close();socket=null;}game=null;selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;showScreen('menu');});
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 el('menu-single').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
 el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('game');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
@@ -109,13 +119,64 @@ async function connect(){
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
 function startSinglePlayer(){
- mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);selectedSource=-1;activeBuilding=null;myId='human';
- const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[305,354,2045,2094];
- const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
- const tiles:Tile[]=Array.from({length:2400},(_,i)=>{const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;const coast=x<2||y<2||x>=58||y>=38;const lake=Math.abs(x-43)<3&&Math.abs(y-19)<4;return{owner:null,terrain:coast||lake?'water':n>.9?'mountain':n>.72?'forest':'plain',troops:0,buildings:[]};});
- starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:20,buildings:[]};});
- game={width:60,height:40,tiles,players,tick:0};setConnection('SOLO CAMPAIGN',true);report('The campaign is live. Click adjacent land to expand, or choose a structure below and click one of your own territories.');render();localTimer=setInterval(localTick,4000);
+ mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);
+ selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;
+ soloMap=(el('solo-map') as HTMLSelectElement).value;
+ soloBotCount=Number((el('solo-bots') as HTMLSelectElement).value);
+ soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
+ soloWinPercent=Number((el('solo-win') as HTMLSelectElement).value);
+ const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f','#57b78a','#d77eb0','#78aeb5','#c18b62'];
+ const commanders=[nickname,'Astra','Vex','Orion','Nova','Mako','Sable','Atlas'];
+ const starts=[305,354,2045,2094,330,2070,1205,1254];
+ const players:Player[]=commanders.slice(0,soloBotCount+1).map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
+ const tiles:Tile[]=Array.from({length:2400},(_,i)=>{
+  const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;
+  const edge=x<2||y<2||x>=58||y>=38;
+  const islandNoise=Math.sin(x*.19)*Math.cos(y*.23)+Math.sin((x+y)*.12)*.4+Math.cos((x-y)*.17)*.25;
+  const internalWater=soloMap==='islands'?islandNoise<-.43:soloMap==='continents'?Math.abs(x-43)<3&&Math.abs(y-19)<4:soloMap==='pangaea'?false:false;
+  const mountain=soloMap==='highlands'?n>.69:n>.9;
+  const terrain:Tile['terrain']=edge||internalWater?'water':mountain?'mountain':n>.72?'forest':'plain';
+  return{owner:null,terrain,troops:0,buildings:[]};
+ });
+ starts.slice(0,players.length).forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:20,buildings:[]};});
+ game={width:60,height:40,tiles,players,tick:0};
+ setConnection('SOLO CAMPAIGN',true);
+ el('solo-toolbar').classList.remove('hidden');
+ (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
+ (el('speed-solo') as HTMLButtonElement).textContent='1× SPEED';
+ el('match-banner').classList.add('hidden');
+ report(players.length===1?'Empty frontier. Expand and reach the land victory target.':players.length-1+' AI commanders · '+soloDifficulty.toUpperCase()+' · '+soloMap.toUpperCase()+'. Click adjacent territory to expand.');
+ render();resetSoloTimer();
 }
+function resetSoloTimer(){
+ if(localTimer)clearInterval(localTimer);
+ if(mode==='single'&&!soloPaused&&!matchWinner)localTimer=setInterval(localTick,4000/soloSpeed);
+}
+function checkSoloWinner(){
+ if(!game||mode!=='single'||matchWinner)return;
+ const playable=game.tiles.filter(t=>t.terrain!=='water'&&t.terrain!=='mountain').length;
+ if(!playable)return;
+ const winner=game.players.find(p=>game!.tiles.filter(t=>t.owner===p.id).length/playable>=soloWinPercent/100);
+ if(!winner)return;
+ matchWinner=winner.name;soloPaused=true;if(localTimer)clearInterval(localTimer);
+ el('match-result').textContent=winner.id==='human'?'VICTORY':'DEFEAT';
+ el('match-result-detail').textContent=winner.name+' reached '+soloWinPercent+'% of playable land.';
+ el('match-banner').classList.remove('hidden');
+ report(winner.name+' won the campaign. Start a new match to play again.');
+}
+el('pause-solo').addEventListener('click',()=>{
+ if(mode!=='single'||matchWinner)return;
+ soloPaused=!soloPaused;
+ (el('pause-solo') as HTMLButtonElement).textContent=soloPaused?'▶ RESUME':'Ⅱ PAUSE';
+ if(soloPaused){if(localTimer)clearInterval(localTimer);report('Campaign paused.');}
+ else{report('Campaign resumed.');resetSoloTimer();}
+});
+el('speed-solo').addEventListener('click',()=>{
+ soloSpeed=soloSpeed===1?2:soloSpeed===2?4:1;
+ (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';
+ resetSoloTimer();
+});
+el('new-solo').addEventListener('click',()=>{startSinglePlayer();});
 function localClaim(targetIndex:number,percent:number){
  if(!game)return false;const tile=game.tiles[targetIndex];if(!tile||tile.owner===myId||tile.terrain==='mountain'||tile.terrain==='water')return false;
  const adjacent=neighborsLocal(targetIndex).filter(n=>game!.tiles[n]!.owner===myId).sort((a,b)=>game!.tiles[b]!.troops-game!.tiles[a]!.troops);
@@ -144,11 +205,11 @@ function botTurn(bot:Player){
  const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
  opts.sort((a,b)=>{const score=(o:typeof opts[number])=>(o.t.owner?15:8)+(o.t.troops*.35)+(neighborsLocal(o.target).filter(n=>game!.tiles[n]!.owner!==bot.id).length*2)+(personality==='builder'&&!o.t.owner?5:0)+(personality==='raider'&&o.t.owner?7:0);return score(b)-score(a);});
  const pick=opts.find(o=>o.source!==bot.home||game!.tiles[o.source]!.troops>12);if(!pick)return;
- const source=game.tiles[pick.source]!,send=Math.max(1,Math.floor(source.troops*(personality==='warden'?.3:.65)));if(send<=pick.t.troops)return;
+ const source=game.tiles[pick.source]!,difficultyForce:Record<typeof soloDifficulty,number>={relaxed:.35,balanced:.62,intense:.8,impossible:.94},personalityScale=personality==='warden'?.75:personality==='raider'?1.12:.9,send=Math.max(1,Math.floor(source.troops*difficultyForce[soloDifficulty]*personalityScale));if(send<=pick.t.troops)return;
  const tile=pick.t,defender=game.players.find(p=>p.id===tile.owner);source.troops-=send;const survivors=send-(tile.owner?tile.troops:0)-1;if(defender)defender.score=Math.max(0,defender.score-1);tile.owner=bot.id;tile.troops=Math.max(1,survivors);bot.score++;
  if(bot.gold>=25&&personality==='warden'&&game.tick%2===0)localRecruit(bot);
 }
-function localTick(){if(!game||mode!=='single')return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){botTurn(bot);if(game.tick%3===0)botTurn(bot);}render();}
+function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;botTurn(bot);if(soloDifficulty==='intense'||soloDifficulty==='impossible')botTurn(bot);if(soloDifficulty==='impossible'&&game.tick%2===0)botTurn(bot);}render();checkSoloWinner();}
 function tileAt(event:MouseEvent|PointerEvent){if(!game)return-1;const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*game.width/r.width),y=Math.floor((event.clientY-r.top)*game.height/r.height);return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;}
 function draw(){
  const targetWidth=Math.max(1800,Math.round(window.innerWidth*1.3/settings.pixelScale)),targetHeight=Math.max(1200,Math.round(window.innerHeight*1.3/settings.pixelScale));
@@ -187,7 +248,7 @@ canvas.addEventListener('click',event=>{
  if(tile.owner===myId){selectedSource=index;report('Territory selected. Click adjacent neutral or enemy land to expand.');updateStats();draw();return;}
  const adjacent=neighborsLocal(index).filter(n=>game!.tiles[n]!.owner===myId);
  if(!adjacent.length){selectedSource=-1;updateStats();draw();return;}
- if(mode==='single'){const won=localClaim(index,forcePercent);report(won?'Territory captured!':'Attack failed or was repelled. Try sending more troops.');render();}
+ if(mode==='single'){const won=localClaim(index,forcePercent);report(won?'Territory captured!':'Attack failed or was repelled. Try sending more troops.');render();checkSoloWinner();}
  else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',tile:index,percent:forcePercent}));
 });
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
