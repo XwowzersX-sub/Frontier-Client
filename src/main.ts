@@ -9,8 +9,9 @@ const supabase = createClient(
 const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.com').replace(/\/$/, '');
 type BuildingType = 'city'|'factory'|'port'|'defense_post'|'missile_silo'|'sam_launcher'|'warship';
 type Building = {type:BuildingType;level:number};
+type WeaponType = 'atom'|'hydrogen'|'mirv';
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
-type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number };
+type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; arsenal?:Record<WeaponType,number> };
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -43,7 +44,7 @@ app.innerHTML = `
  <div class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>TROOPS</small><b id="available-troops">0</b></div></div>
   <div class="dock-main">
-   <div class="dock-tabs"><button class="dock-tab active" data-tab="command">COMMAND</button><button class="dock-tab" data-tab="build">BUILD</button><button class="dock-tab" data-tab="units">UNITS</button></div>
+   <div class="dock-tabs"><button class="dock-tab active" data-tab="command">COMMAND</button><button class="dock-tab" data-tab="build">BUILD</button><button class="dock-tab" data-tab="units">UNITS</button><button class="dock-tab" data-tab="weapons">WEAPONS</button></div>
    <div id="command-panel" class="dock-panel">
     <div class="ratio-control"><small>ATTACK RATIO</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
     <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="center-map" class="dock-action">◎ CENTER</button></div>
@@ -63,6 +64,13 @@ app.innerHTML = `
     <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +5</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
     <div class="dock-hint">Click adjacent neutral or enemy territory to attack using the selected troop ratio. Buildings provide passive bonuses.</div>
    </div>
+   <div id="weapons-panel" class="dock-panel hidden">
+    <div class="weapon-grid">
+     <button data-buy-weapon="atom">ARM ATOM <small>250 G</small></button><button data-fire-weapon="atom">FIRE ATOM <b id="ammo-atom">0</b></button>
+     <button data-buy-weapon="hydrogen">ARM HYDROGEN <small>500 G</small></button><button data-fire-weapon="hydrogen">FIRE HYDROGEN <b id="ammo-hydrogen">0</b></button>
+     <button data-buy-weapon="mirv">ARM MIRV <small>900 G</small></button><button data-fire-weapon="mirv">FIRE MIRV <b id="ammo-mirv">0</b></button>
+    </div><div class="dock-hint" id="weapon-hint">Arm at a Missile Silo, then choose FIRE and click enemy land. Enemy SAMs can intercept.</div>
+   </div>
   </div>
   <div class="dock-report"><small>FIELD REPORT</small><p id="report">Choose a game mode to begin.</p><div id="selected-info">No territory selected</div></div>
  </div>
@@ -76,7 +84,7 @@ type Settings={pixelScale:number;grid:boolean;sound:boolean;counts:boolean};
 let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}
-let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
+let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,activeWeaponBuy:WeaponType|null=null,activeWeaponFire:WeaponType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
@@ -108,9 +116,9 @@ async function connect(){
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
 function startSinglePlayer(){
- mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);selectedSource=-1;activeBuilding=null;myId='human';
+ mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);selectedSource=-1;activeBuilding=null;activeWeaponBuy=null;activeWeaponFire=null;myId='human';
  const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[305,354,2045,2094];
- const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
+ const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!,arsenal:{atom:0,hydrogen:0,mirv:0}}));
  const tiles:Tile[]=Array.from({length:2400},(_,i)=>{const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;const coast=x<2||y<2||x>=58||y>=38;const lake=Math.abs(x-43)<3&&Math.abs(y-19)<4;return{owner:null,terrain:coast||lake?'water':n>.9?'mountain':n>.72?'forest':'plain',troops:0,buildings:[]};});
  starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:40,buildings:[]};});
  game={width:60,height:40,tiles,players,tick:0};setConnection('SOLO CAMPAIGN',true);report('The campaign is live. Click adjacent land to expand, or choose a structure below and click one of your own territories.');render();localTimer=setInterval(localTick,4000);
@@ -138,6 +146,21 @@ function localBuild(index:number,type:BuildingType){
 }
 function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
 function localRecruit(player:Player){if(!game||player.gold<25)return;const home=game.tiles[player.home];if(home?.owner===player.id){player.gold-=25;home.troops+=15;}}
+function localWeaponBuy(index:number,weapon:WeaponType){
+ if(!game)return false;const tile=game.tiles[index],me=game.players.find(p=>p.id===myId),price:Record<WeaponType,number>={atom:250,hydrogen:500,mirv:900};
+ if(!tile||tile.owner!==myId||!(tile.buildings||[]).some(b=>b.type==='missile_silo')){report('Select one of your Missile Silos to arm.');return false;}
+ if(!me||me.gold<price[weapon]){report('Not enough gold to arm that weapon.');return false;}
+ me.gold-=price[weapon];me.arsenal=me.arsenal||{atom:0,hydrogen:0,mirv:0};me.arsenal[weapon]++;report(weapon.toUpperCase()+' armed.');return true;
+}
+function localWeaponLaunch(index:number,weapon:WeaponType){
+ if(!game)return false;const me=game.players.find(p=>p.id===myId),arsenal=me?.arsenal||(me&&(me.arsenal={atom:0,hydrogen:0,mirv:0}));const target=game.tiles[index];
+ if(!me||!arsenal||arsenal[weapon]<1||!target||target.terrain==='water'||target.owner===myId){report('Choose an enemy or neutral land target.');return false;}
+ const x=index%game.width,y=Math.floor(index/game.width),intercepted=game.tiles.some((t,i)=>t.owner&&t.owner!==myId&&(t.buildings||[]).some(b=>b.type==='sam_launcher')&&Math.abs(i%game.width-x)+Math.abs(Math.floor(i/game.width)-y)<=4);
+ arsenal[weapon]--;if(intercepted){report('Strike intercepted by an enemy SAM launcher.');return true;}
+ const radius:Record<WeaponType,number>={atom:0,hydrogen:1,mirv:2};let affected=0;
+ game.tiles.forEach((t,i)=>{const d=Math.abs(i%game.width-x)+Math.abs(Math.floor(i/game.width)-y);if(d<=radius[weapon]&&t.owner&&t.owner!==myId&&t.terrain!=='water'){const defender=game!.players.find(p=>p.id===t.owner);if(defender)defender.score=Math.max(0,defender.score-1);t.owner=null;t.troops=0;t.buildings=[];affected++;}});
+ report(weapon.toUpperCase()+' strike cleared '+affected+' enemy territories.');return true;
+}
 function botTurn(bot:Player){
  if(!game)return;const owned=game.tiles.map((t,i)=>t.owner===bot.id?i:-1).filter(i=>i>=0);if(!owned.length)return;
  const opts=owned.flatMap(i=>neighborsLocal(i).filter(n=>game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain'&&game!.tiles[n]!.terrain!=='water').map(n=>({source:i,target:n,t:game!.tiles[n]!})));
@@ -176,6 +199,7 @@ function updateStats(){
  el('tile-info').textContent=activeBuilding?'BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'CLICK ADJACENT LAND TO EXPAND · SELECTED '+(selectedSource>=0?'TILE '+selectedSource:'NONE');
  el('tile-title').textContent=activeBuilding?'CONSTRUCTION MODE':'WORLD MAP';
  el('turn').textContent=String(current?.tick||0);
+ const arsenal=me?.arsenal||{atom:0,hydrogen:0,mirv:0};(['atom','hydrogen','mirv'] as WeaponType[]).forEach(w=>{const ammo=el('ammo-'+w);if(ammo)ammo.textContent=String(arsenal[w]||0);});
  const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.';
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
 }
@@ -183,6 +207,8 @@ function render(){if(!game)return;const me=game.players.find(p=>p.id===myId);(el
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));}
 canvas.addEventListener('click',event=>{
  if(!game)return;const index=tileAt(event);if(index<0)return;const tile=game.tiles[index]!;
+ if(activeWeaponBuy){if(mode==='single'){localWeaponBuy(index,activeWeaponBuy);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'weapon',action:'buy',weapon:activeWeaponBuy,tile:index}));activeWeaponBuy=null;updateStats();return;}
+ if(activeWeaponFire){if(mode==='single'){localWeaponLaunch(index,activeWeaponFire);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'weapon',action:'launch',weapon:activeWeaponFire,tile:index}));activeWeaponFire=null;updateStats();return;}
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
  if(tile.owner===myId){selectedSource=index;report('Territory selected. Click adjacent neutral or enemy land to expand.');updateStats();draw();return;}
  const adjacent=neighborsLocal(index).filter(n=>game!.tiles[n]!.owner===myId);
@@ -191,12 +217,15 @@ canvas.addEventListener('click',event=>{
  else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',tile:index,percent:forcePercent}));
 });
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
-document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
+document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');el('weapons-panel').classList.toggle('hidden',tab!=='weapons');}));
 document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.addEventListener('click',()=>{activeBuilding=button.dataset.building as BuildingType;document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Build mode: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your territories.');updateStats();}));
+document.querySelectorAll<HTMLButtonElement>('[data-buy-weapon]').forEach(button=>button.addEventListener('click',()=>{activeWeaponBuy=button.dataset.buyWeapon as WeaponType;activeWeaponFire=null;activeBuilding=null;report('Select one of your Missile Silos to arm '+activeWeaponBuy.toUpperCase()+'.');updateStats();}));
+document.querySelectorAll<HTMLButtonElement>('[data-fire-weapon]').forEach(button=>button.addEventListener('click',()=>{const weapon=button.dataset.fireWeapon as WeaponType;const player=game?.players.find(p=>p.id===myId);if(!(player?.arsenal?.[weapon]||0)){report('No '+weapon.toUpperCase()+' ammunition. Arm one at a Missile Silo first.');return;}activeWeaponFire=weapon;activeWeaponBuy=null;activeBuilding=null;report('Targeting '+weapon.toUpperCase()+'. Click enemy land to launch.');updateStats();}));
+
 el('recruit').addEventListener('click',()=>{if(mode==='single'&&game){const p=game.players.find(v=>v.id===myId);if(p)localRecruit(p);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'recruit'}));});
 el('recruit-large').addEventListener('click',()=>el('recruit').click());
-el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selectedSource=-1;updateStats();draw();});
+el('clear-selection').addEventListener('click',()=>{activeBuilding=null;activeWeaponBuy=null;activeWeaponFire=null;selectedSource=-1;updateStats();draw();});
 el('center-map').addEventListener('click',()=>{canvas.style.transform='translate(0,0) scale(1)';});
-window.addEventListener('keydown',event=>{if(event.key==='Escape'){activeBuilding=null;updateStats();draw();}if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement)return;const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','missile_silo','sam_launcher','warship'];if(key>=1&&key<=7){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}});
+window.addEventListener('keydown',event=>{if(event.key==='Escape'){activeBuilding=null;updateStats();draw();}if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement)return;const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','missile_silo','sam_launcher','warship'];if(key>=1&&key<=7){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');el('weapons-panel').classList.add('hidden');updateStats();}if(key===8||key===9||key===0){const weapon:WeaponType=key===8?'atom':key===9?'hydrogen':'mirv';activeWeaponFire=weapon;activeWeaponBuy=null;activeBuilding=null;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='weapons'));el('command-panel').classList.add('hidden');el('build-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('weapons-panel').classList.remove('hidden');report('Click enemy land to launch '+weapon.toUpperCase()+'.');updateStats();}});
 window.addEventListener('resize',()=>draw());
 applySettings();showScreen('menu');getNickname();
