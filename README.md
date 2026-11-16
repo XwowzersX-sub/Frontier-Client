@@ -27,7 +27,7 @@ Create a local `.env` file from `.env.example`. The publishable Supabase key is 
 3. Push to `main`; the workflow builds and deploys the site.
 
 ## Notes
-The world is shared by all clients on one server. The server saves snapshots to Supabase so the map and commander progress can survive a Render restart. The prototype currently has one global map and no separate match rooms or AI opponents.
+The world is shared by all clients on one server. The server saves snapshots to Supabase so the map and commander progress can survive a Render restart. The multiplayer prototype currently has one global map and no separate match rooms or multiplayer AI. Single-player supports configurable AI commanders, map presets, team formats, and win targets.
 
 ## Fullscreen controls and construction
 
@@ -35,5 +35,7 @@ The world is shared by all clients on one server. The server saves snapshots to 
 - Click one of your land tiles to select it. Click adjacent neutral or rival land to expand; there are no drawn routes. The Command panel sets the troop ratio to 25%, 50%, 75%, or 100%.
 - Build hotkeys 1–6 select City, Factory, Port, Defense Post, Market, and Farm. Select a structure, then click one of your own territories.
 - Ports must be placed on a coastline. Cities can be upgraded to level 4. Factories and Markets increase gold income; Farms improve troop growth; Defense Posts make a tile harder to capture.
+- Solo match setup includes FFA, Duos, Trios, and Squads; Continents, Island Chain, Pangaea, and Highlands maps; 0–7 AI opponents; four AI difficulty levels; and a configurable land-win target. Team modes automatically add enough AI commanders to form opposing teams.
+- Solo campaigns can be paused, resumed, or sped up to 2×/4×. WASD pans the camera, Q/E zooms, C centers, M toggles the grid, and Space pauses. Middle-mouse drag pans too.
 - Settings include fine pixel scaling, grid visibility, and troop-count display. Sound preference is saved, but sound effects are not implemented yet.
 - Nicknames and display settings are saved in the browser.
