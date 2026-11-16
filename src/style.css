@@ -188,3 +188,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .troop-stock-track{height:7px;margin-top:5px;overflow:hidden;background:#020d19;border:1px solid #3c728d;border-radius:99px;box-shadow:inset 0 1px 3px #000b}
 .troop-stock-track i{display:block;height:100%;width:0;background:linear-gradient(90deg,#29b7dd,#7bf4ff);border-radius:99px;box-shadow:0 0 12px #43dfff99;transition:width .22s ease}
 @media(max-width:900px){.troop-stock-label small{font-size:6px}.troop-stock-label b{font-size:7px}}
+
+
+/* OpenFront-inspired strategy controls: workforce slider + sea settlement */
+.workforce-control{min-width:155px;display:flex;flex-direction:column;gap:7px;padding:0 12px;border-left:1px solid #32627a;border-right:1px solid #32627a}
+.workforce-control label{display:flex;justify-content:space-between;gap:8px;color:#a8d9e8;font:700 7px 'DM Mono';letter-spacing:.55px}
+.workforce-control label b{color:#8cf2ff;font-size:8px}
+.workforce-control input{width:100%;height:5px;margin:4px 0;accent-color:#64e8fa;cursor:pointer}
+#boat-mode{border-color:#55abc1;color:#bff8ff}
+#boat-mode.build-selected{background:linear-gradient(120deg,#39b7d9,#8ff0ff);border-color:#c0fbff;color:#052333;box-shadow:0 0 22px #35dfff66}
+.dock-actions{align-items:stretch}
+@media(max-width:900px){.workforce-control{min-width:130px;padding:0 7px}}
+@media(max-width:600px){.workforce-control{min-width:44%;flex:1;border-left:0;border-right:0;padding:2px 4px}.workforce-control label{font-size:6px}.workforce-control input{height:6px}.dock-actions{flex-wrap:wrap}.dock-actions #boat-mode{flex:1.2}}
