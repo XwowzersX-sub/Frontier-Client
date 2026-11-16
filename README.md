@@ -37,6 +37,7 @@ The world is shared by all clients on one server. The server saves snapshots to 
 - Ports must be placed on a coastline. Cities can be upgraded to level 4. Factories and Markets increase gold income; Farms improve troop growth; Defense Posts make a tile harder to capture.
 - Solo match setup includes FFA, Duos, Trios, and Squads; Continents, Island Chain, Pangaea, and Highlands maps; 0–7 AI opponents; four AI difficulty levels; and a configurable land-win target. Team modes automatically add enough AI commanders to form opposing teams.
 - Solo campaigns can be paused, resumed, or sped up to 2×/4×. WASD pans the camera, Q/E zooms, C centers, M toggles the grid, and Space pauses.
-- Solo campaigns can be saved locally, loaded, exported as portable JSON files, or imported from another save file. Middle-mouse drag pans too.
+- Solo campaigns can be saved locally, loaded, exported as portable JSON files, or imported from another save file.
+- The Units panel includes quick chat and emoji pings. Multiplayer messages are broadcast by the server; solo messages appear in the field report. Middle-mouse drag pans too.
 - Settings include fine pixel scaling, grid visibility, and troop-count display. Sound preference is saved, but sound effects are not implemented yet.
 - Nicknames and display settings are saved in the browser.
