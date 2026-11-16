@@ -147,29 +147,39 @@ const WORLD_MAPS=[
 ];
 const SPAWN_POINTS:Record<string,[number,number]>={northwest:[.16,.16],north:[.5,.12],northeast:[.84,.16],west:[.12,.5],center:[.5,.5],east:[.88,.5],southwest:[.16,.84],south:[.5,.88],southeast:[.84,.84]};
 function mapTitle(id:string){return WORLD_MAPS.find(m=>m.id===id)?.name||'Random World';}
-function createWorldTiles(mapId:string,seed:number):Tile[]{
- return Array.from({length:WORLD_WIDTH*WORLD_HEIGHT},(_,i)=>{
-  const x=i%WORLD_WIDTH,y=Math.floor(i/WORLD_WIDTH),nx=(x-WORLD_WIDTH/2)/(WORLD_WIDTH/2),ny=(y-WORLD_HEIGHT/2)/(WORLD_HEIGHT/2);
-  const wave=Math.sin(x*.055+seed)*.42+Math.cos(y*.073-seed*.7)*.36+Math.sin((x+y)*.031+seed*1.4)*.27+Math.cos((x-y)*.039-seed)*.2;
-  const n=Math.abs(Math.sin((x+seed*31.7)*12.9898+(y-seed*17.3)*78.233)*43758.5453)%1;
-  const d1=Math.hypot((nx+.48)*.94,(ny+.05)*1.12),d2=Math.hypot((nx-.43)*1.05,(ny-.1)*1.06);
-  let land=wave>-.2;
-  if(mapId==='islands')land=wave>.18;
-  if(mapId==='pangaea')land=nx*nx*.86+ny*ny*1.2<.82&&wave>-.95;
-  if(mapId==='highlands')land=wave>-.32;
-  if(mapId==='twin-worlds')land=(d1<.73||d2<.72)&&wave>-.48;
-  if(mapId==='inland-sea')land=wave>-.18&&!(Math.pow(nx/.42,2)+Math.pow(ny/.34,2)<1);
-  if(mapId==='atolls'){const r1=Math.abs(Math.hypot(nx+.42,ny+.08)-.34)<.15,r2=Math.abs(Math.hypot(nx-.4,ny-.13)-.3)<.14;land=r1||r2||(wave>.45&&Math.abs(nx)<.8);}
-  if(mapId==='supercontinent')land=Math.abs(nx)<.91&&Math.abs(ny)<.82&&wave>-.78;
-  if(mapId==='fractal')land=wave>-.05;
-  if(mapId==='earthlike')land=(wave>-.08&&(nx<.28||ny>-.38))||(d1<.62&&wave>-.55);
-  if(x<2||y<2||x>=WORLD_WIDTH-2||y>=WORLD_HEIGHT-2)land=false;
-  if(mapId==='pangaea'&&Math.abs(nx+.16)<.035&&Math.abs(ny-.02)<.16)land=false;
-  if(mapId==='inland-sea'&&Math.abs(nx)<.42&&Math.abs(ny)<.34)land=false;
-  const mountainChance=mapId==='highlands'?.77:.955;
-  const terrain:Tile['terrain']=!land?'water':n>mountainChance?'mountain':n>.66?'forest':'plain';
-  return{owner:null,terrain,troops:0,buildings:[]};
- });
+function terrainAt(x:number,y:number,mapId:string,seed:number):Tile['terrain']{
+ const nx=(x-WORLD_WIDTH/2)/(WORLD_WIDTH/2),ny=(y-WORLD_HEIGHT/2)/(WORLD_HEIGHT/2);
+ const wave=Math.sin(x*.055+seed)*.42+Math.cos(y*.073-seed*.7)*.36+Math.sin((x+y)*.031+seed*1.4)*.27+Math.cos((x-y)*.039-seed)*.2;
+ const n=Math.abs(Math.sin((x+seed*31.7)*12.9898+(y-seed*17.3)*78.233)*43758.5453)%1;
+ const d1=Math.hypot((nx+.48)*.94,(ny+.05)*1.12),d2=Math.hypot((nx-.43)*1.05,(ny-.1)*1.06);
+ let land=wave>-.2;
+ if(mapId==='islands')land=wave>.18;
+ if(mapId==='pangaea')land=nx*nx*.86+ny*ny*1.2<.82&&wave>-.95;
+ if(mapId==='highlands')land=wave>-.32;
+ if(mapId==='twin-worlds')land=(d1<.73||d2<.72)&&wave>-.48;
+ if(mapId==='inland-sea')land=wave>-.18&&!(Math.pow(nx/.42,2)+Math.pow(ny/.34,2)<1);
+ if(mapId==='atolls'){const r1=Math.abs(Math.hypot(nx+.42,ny+.08)-.34)<.15,r2=Math.abs(Math.hypot(nx-.4,ny-.13)-.3)<.14;land=r1||r2||(wave>.45&&Math.abs(nx)<.8);}
+ if(mapId==='supercontinent')land=Math.abs(nx)<.91&&Math.abs(ny)<.82&&wave>-.78;
+ if(mapId==='fractal')land=wave>-.05;
+ if(mapId==='earthlike')land=(wave>-.08&&(nx<.28||ny>-.38))||(d1<.62&&wave>-.55);
+ if(x<2||y<2||x>=WORLD_WIDTH-2||y>=WORLD_HEIGHT-2)land=false;
+ if(mapId==='pangaea'&&Math.abs(nx+.16)<.035&&Math.abs(ny-.02)<.16)land=false;
+ if(mapId==='inland-sea'&&Math.abs(nx)<.42&&Math.abs(ny)<.34)land=false;
+ const mountainChance=mapId==='highlands'?.77:.955;
+ return !land?'water':n>mountainChance?'mountain':n>.66?'forest':'plain';
+}
+function baseTileAt(index:number,mapId=game?.mapName||'continents',seed=game?.mapSeed||1):Tile{
+ const x=index%WORLD_WIDTH,y=Math.floor(index/WORLD_WIDTH);
+ return{owner:null,terrain:terrainAt(x,y,mapId||'continents',seed),troops:0,buildings:[]};
+}
+function getGameTile(index:number):Tile{
+ if(!game||index<0||index>=game.width*game.height)return{owner:null,terrain:'water',troops:0,buildings:[]};
+ return game.tiles[index]||baseTileAt(index,game.mapName||'continents',game.mapSeed||1);
+}
+function createWorldTiles(mapId:string,seed:number):{tiles:Tile[];playable:number}{
+ const tiles=new Array<Tile>(WORLD_WIDTH*WORLD_HEIGHT);let playable=0;
+ for(let i=0;i<WORLD_WIDTH*WORLD_HEIGHT;i++){const terrain=terrainAt(i%WORLD_WIDTH,Math.floor(i/WORLD_WIDTH),mapId,seed);if(terrain!=='water'&&terrain!=='mountain')playable++;}
+ return{tiles,playable};
 }
 function getSpawnSites(){
  const sites:number[]=[];
@@ -196,12 +206,12 @@ function chooseSpawnSite(preference:string,used:number[],farthest=false){
  });
  return available[0]!;
 }
-function clearSpawnArea(tiles:Tile[],at:number,owner:string,playerColor:string){
+function clearSpawnArea(tiles:Tile[],at:number,owner:string,playerColor:string,mapId:string,seed:number){
  const sx=at%WORLD_WIDTH,sy=Math.floor(at/WORLD_WIDTH);
  for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
   const x=sx+dx,y=sy+dy;if(x<1||y<1||x>=WORLD_WIDTH-1||y>=WORLD_HEIGHT-1)continue;
-  const tile=tiles[y*WORLD_WIDTH+x]!;
-  if(tile.terrain==='water'||tile.terrain==='mountain')tile.terrain='plain';
+  const index=y*WORLD_WIDTH+x,existing=tiles[index],terrain=existing?.terrain||terrainAt(x,y,mapId,seed);
+  if(terrain==='water'||terrain==='mountain')tiles[index]={owner:null,terrain:'plain',troops:0,buildings:[]};
  }
  tiles[at]={owner,terrain:'plain',troops:36,buildings:[]};
 }
