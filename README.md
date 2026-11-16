@@ -28,3 +28,14 @@ Create a local `.env` file from `.env.example`. The publishable Supabase key is 
 
 ## Notes
 The world is shared by all clients on one server. The server saves snapshots to Supabase so the map and commander progress can survive a Render restart. The prototype currently has one global map and no separate match rooms or AI opponents.
+
+## Controls and presentation
+
+- The main menu lets you choose single-player or multiplayer and set a commander nickname.
+- The map is rendered as a detailed pixel-art canvas. Settings control pixel scale, grid visibility, troop counts, and optional sound effects.
+- Select one of your territories, then drag across adjacent tiles to draw an expansion route.
+- Choose 25%, 50%, 75%, or ALL IN in the bottom command HUD, then press **Expand / Attack**. Troops travel along the route and fight defenders; expansion does not spend gold.
+- Recruiting still uses gold. Territory income replenishes troops over time.
+- Nicknames and display settings are saved in the browser.
+
+The multiplayer server validates each route, calculates troop losses, updates territory ownership, broadcasts the result, and persists the world snapshot.
