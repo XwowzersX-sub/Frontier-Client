@@ -200,3 +200,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .dock-actions{align-items:stretch}
 @media(max-width:900px){.workforce-control{min-width:130px;padding:0 7px}}
 @media(max-width:600px){.workforce-control{min-width:44%;flex:1;border-left:0;border-right:0;padding:2px 4px}.workforce-control label{font-size:6px}.workforce-control input{height:6px}.dock-actions{flex-wrap:wrap}.dock-actions #boat-mode{flex:1.2}}
+
+
+/* Global world radar */
+.minimap-panel{position:absolute;z-index:8;top:82px;right:14px;width:194px;padding:8px;background:#071523cc;border:1px solid #65dfff70;border-radius:14px;box-shadow:0 10px 30px #0009,0 0 24px #16caff18;backdrop-filter:blur(16px)}
+.minimap-panel>div{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:#9ceeff;font:700 8px 'DM Mono';letter-spacing:.9px}
+.minimap-panel>div span{color:#7b9cac;font-size:6px;letter-spacing:.4px}
+#mini-map{display:block;width:100%;height:auto;aspect-ratio:1;image-rendering:pixelated;border:1px solid #5c94a7;border-radius:7px;cursor:crosshair}
+@media(max-width:900px){.minimap-panel{width:148px;top:78px;right:8px;padding:6px}}
+@media(max-width:600px){.minimap-panel{width:98px;top:121px;right:7px;padding:4px;border-radius:9px}.minimap-panel>div{font-size:6px;margin-bottom:3px}.minimap-panel>div span{display:none}}
