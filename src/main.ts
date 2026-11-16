@@ -7,7 +7,9 @@ const supabase = createClient(
   env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_MPWfzhBBPHCTjz-mH3ff4Q_8G1XSfnm'
 );
 const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.com').replace(/\/$/, '');
-type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain'; troops: number };
+type BuildingType = 'city'|'factory'|'port'|'defense_post'|'missile_silo'|'sam_launcher'|'warship';
+type Building = {type:BuildingType;level:number};
+type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
 type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number };
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number };
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -24,39 +26,57 @@ app.innerHTML = `
  </div><div class="menu-version">PIXEL FRONTIER · REALM CONQUEST · BETA</div>
 </div>
 <div id="settings-screen" class="screen modal-screen hidden"><div class="settings-card"><div class="modal-head"><div><div class="eyebrow">GAME OPTIONS</div><h2>SETTINGS</h2></div><button id="settings-close" class="secondary">CLOSE ✕</button></div>
- <label class="setting-row">PIXEL SCALE <select id="pixel-scale"><option value="1">Crisp</option><option value="2" selected>Chunky</option><option value="3">Extra chunky</option></select></label>
+ <label class="setting-row">PIXEL SCALE <select id="pixel-scale"><option value="0.5">Micro pixels</option><option value="0.75" selected>Fine pixels</option><option value="1">Standard</option></select></label>
  <label class="setting-row">MAP GRID <input id="grid-toggle" type="checkbox" checked></label>
  <label class="setting-row">SOUND EFFECTS <input id="sound-toggle" type="checkbox"></label>
  <label class="setting-row">SHOW TROOP COUNTS <input id="count-toggle" type="checkbox" checked></label>
  <button id="settings-save" class="primary">SAVE SETTINGS</button>
  </div></div>
 <div id="game-screen" class="game-screen hidden">
- <header><div class="brand">✦ PIXEL FRONTIER <small>REALM CONQUEST</small></div><div class="head-center"><span id="connection" class="connection">● OFFLINE</span><b id="commander-label">COMMANDER</b></div><div class="right-head"><button id="game-settings" class="secondary">⚙</button><button id="main-menu" class="account">MENU</button></div></header>
- <main class="battle-layout">
-  <section class="battlefield">
-   <div class="game-top"><div><div class="eyebrow">LIVE THEATER</div><strong>SECTOR 07 <span>·</span> THE OUTER REACH</strong></div><div class="top-stats"><div><small>TURN</small><b id="turn">0</b></div><div><small>LAND</small><b id="territory">0</b></div><div><small>INCOME</small><b id="income">+0</b></div><div><small>COMMANDERS</small><b id="online">0</b></div></div></div>
-   <div class="map-wrap"><canvas id="map" width="1500" height="1000" aria-label="Pixel Frontier world map"></canvas></div>
-   <div class="map-foot"><span id="tile-info">SELECT A TILE · DRAG FROM YOUR LAND TO EXPAND</span><span id="score">SCORE 0</span></div>
-   <div class="bottom-hud">
-    <div class="hud-commander"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="gold-stat"><small>GOLD</small><b id="gold">0</b></div></div>
-    <div class="troop-control"><small>DEPLOY TROOPS</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">ALL IN</button></div><span id="available-troops">Select your territory</span></div>
-    <div class="action-controls"><button id="expand" class="primary" disabled>⚑ EXPAND / ATTACK</button><button id="recruit" class="secondary" disabled>＋ RECRUIT</button></div>
+ <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas>
+ <div class="world-topbar">
+  <div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div>
+  <div class="world-metrics"><span>COMMANDER <b id="commander-label">COMMANDER</b></span><span>GOLD <b id="gold">0</b></span><span>LAND <b id="territory">0</b></span><span>TURN <b id="turn">0</b></span><span>ONLINE <b id="online">0</b></span></div>
+  <div class="world-actions"><button id="game-settings" class="world-icon">⚙</button><button id="main-menu" class="world-icon">MENU</button></div>
+ </div>
+ <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">CLICK YOUR LAND TO SELECT IT · CLICK ADJACENT LAND TO EXPAND</span><span id="score">SCORE 0</span></div>
+ <div class="floating-dock">
+  <div class="dock-profile"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>TROOPS</small><b id="available-troops">0</b></div></div>
+  <div class="dock-main">
+   <div class="dock-tabs"><button class="dock-tab active" data-tab="command">COMMAND</button><button class="dock-tab" data-tab="build">BUILD</button><button class="dock-tab" data-tab="units">UNITS</button></div>
+   <div id="command-panel" class="dock-panel">
+    <div class="ratio-control"><small>ATTACK RATIO</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
+    <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="center-map" class="dock-action">◎ CENTER</button></div>
    </div>
-   <div class="hint-bar">SELECT ONE OF YOUR TERRITORIES, THEN DRAG ACROSS THE MAP TO DRAW AN EXPANSION ROUTE. TROOPS FIGHT FOR EACH TILE.</div>
-  </section>
-  <aside class="right-panel"><div class="section-title">COMMANDERS</div><div id="leaderboard" class="leaderboard"></div><div class="section-title">FIELD REPORT</div><div id="report" class="report">Choose a mode to enter the frontier.</div><div class="section-title">SELECTED TILE</div><div id="selected-info" class="selected-info">No tile selected</div></aside>
- </main>
-</div>`;
+   <div id="build-panel" class="dock-panel hidden">
+    <div class="build-grid">
+     <button data-building="city"><kbd>1</kbd><b>▦ CITY</b><small>100 G</small></button>
+     <button data-building="factory"><kbd>2</kbd><b>⚙ FACTORY</b><small>150 G</small></button>
+     <button data-building="port"><kbd>3</kbd><b>⚓ PORT</b><small>120 G</small></button>
+     <button data-building="defense_post"><kbd>4</kbd><b>▥ DEFENSE</b><small>80 G</small></button>
+     <button data-building="missile_silo"><kbd>5</kbd><b>⌂ SILO</b><small>250 G</small></button>
+     <button data-building="sam_launcher"><kbd>6</kbd><b>⬡ SAM</b><small>160 G</small></button>
+     <button data-building="warship"><kbd>7</kbd><b>⚓ WARSHIP</b><small>200 G</small></button>
+    </div><div class="dock-hint" id="build-hint">Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.</div>
+   </div>
+   <div id="units-panel" class="dock-panel hidden">
+    <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +5</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
+    <div class="dock-hint">Click adjacent neutral or enemy territory to attack using the selected troop ratio. Buildings provide passive bonuses.</div>
+   </div>
+  </div>
+  <div class="dock-report"><small>FIELD REPORT</small><p id="report">Choose a game mode to begin.</p><div id="selected-info">No territory selected</div></div>
+ </div>
+</div>;
 
 
 const el=(id:string)=>document.getElementById(id)!;
 const report=(value:string)=>{el('report').textContent=value;};
 const setConnection=(value:string,good=false)=>{el('connection').textContent='● '+value;el('connection').className='connection '+(good?'good':'');};
 type Settings={pixelScale:number;grid:boolean;sound:boolean;counts:boolean};
-let settings:Settings={pixelScale:2,grid:true,sound:false,counts:true};
+let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}
-let forcePercent=50,selectedSource=-1,route:number[]=[],dragging=false,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
+let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
@@ -75,7 +95,7 @@ function openSettings(){previousScreen=game?'game':'menu';applySettings();showSc
 el('menu-settings').addEventListener('click',openSettings);el('game-settings').addEventListener('click',openSettings);
 el('settings-close').addEventListener('click',()=>showScreen(previousScreen));
 el('settings-save').addEventListener('click',()=>{settings={pixelScale:Number((el('pixel-scale') as HTMLSelectElement).value),grid:(el('grid-toggle') as HTMLInputElement).checked,sound:(el('sound-toggle') as HTMLInputElement).checked,counts:(el('count-toggle') as HTMLInputElement).checked};localStorage.setItem('frontier-settings',JSON.stringify(settings));draw();showScreen(game?'game':'menu');});
-el('main-menu').addEventListener('click',()=>{if(localTimer)clearInterval(localTimer);if(socket){socket.close();socket=null;}game=null;selectedSource=-1;route=[];showScreen('menu');});
+el('main-menu').addEventListener('click',()=>{if(localTimer)clearInterval(localTimer);if(socket){socket.close();socket=null;}game=null;selectedSource=-1;activeBuilding=null;showScreen('menu');});
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 el('menu-single').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
 el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('game');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
@@ -88,24 +108,39 @@ async function connect(){
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
 function startSinglePlayer(){
- mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);selectedSource=-1;route=[];myId='human';
- const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[62,537,542,17];
- const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:60,score:0,connected:true,home:starts[i]!}));
- const tiles:Tile[]=Array.from({length:600},(_,i)=>{const n=Math.abs(Math.sin(i*12.9898+Math.floor(i/30)*78.233)*43758.5453)%1;return{owner:null,terrain:n>.9?'mountain':n>.73?'forest':'plain',troops:0};});
- starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:35};});
- game={width:30,height:20,tiles,players,tick:0};setConnection('SOLO CAMPAIGN',true);report('Three rival commanders are active. Select your land and drag to draw a route.');render();localTimer=setInterval(localTick,4000);
+ mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);selectedSource=-1;activeBuilding=null;myId='human';
+ const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[305,2354,2105,554];
+ const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
+ const tiles:Tile[]=Array.from({length:2400},(_,i)=>{const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;const coast=x<2||y<2||x>=58||y>=38;const lake=Math.abs(x-43)<3&&Math.abs(y-19)<4;return{owner:null,terrain:coast||lake?'water':n>.9?'mountain':n>.72?'forest':'plain',troops:0,buildings:[]};});
+ starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:40,buildings:[]};});
+ game={width:60,height:40,tiles,players,tick:0};setConnection('SOLO CAMPAIGN',true);report('The campaign is live. Click adjacent land to expand, or choose a structure below and click one of your own territories.');render();localTimer=setInterval(localTick,4000);
 }
-function pathAdjacent(path:number[]){for(let i=1;i<path.length;i++)if(!neighborsLocal(path[i-1]!).includes(path[i]!))return false;return true;}
-function localExpand(source:number,path:number[],percent:number){
- if(!game)return false;const player=game.players.find(p=>p.id===myId),origin=game.tiles[source];if(!player||!origin||origin.owner!==myId)return false;
- let force=Math.max(1,Math.floor(origin.troops*percent/100));if(force<1)return false;origin.troops-=force;let moved=false,lastCaptured=-1;
- for(const target of path.slice(1,81)){const tile=game.tiles[target]!;if(tile.owner===myId)continue;if(tile.terrain==='mountain')break;const defense=tile.owner?tile.troops:0;if(force<=defense)break;const defender=game.players.find(p=>p.id===tile.owner);if(defender)defender.score=Math.max(0,defender.score-1);force-=defense+1;if(lastCaptured>=0&&lastCaptured!==source)game.tiles[lastCaptured]!.troops=0;tile.owner=myId;tile.troops=0;player.score++;moved=true;lastCaptured=target;if(force<=0)break;}
- if(!moved)origin.troops+=Math.max(0,force);else if(lastCaptured>=0)game.tiles[lastCaptured]!.troops+=force;return moved;
+function localClaim(targetIndex:number,percent:number){
+ if(!game)return false;const tile=game.tiles[targetIndex];if(!tile||tile.owner===myId||tile.terrain==='mountain'||tile.terrain==='water')return false;
+ const adjacent=neighborsLocal(targetIndex).filter(n=>game!.tiles[n]!.owner===myId).sort((a,b)=>game!.tiles[b]!.troops-game!.tiles[a]!.troops);
+ if(!adjacent.length)return false;const source=game.tiles[adjacent[0]!]!;const sent=Math.floor(source.troops*percent/100);if(sent<1)return false;
+ const defense=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));source.troops-=sent;
+ if(sent<=defense){tile.troops=Math.max(0,defense-sent);report('Attack repelled. Try a higher troop ratio.');return false;}
+ const defender=game.players.find(p=>p.id===tile.owner);if(defender)defender.score=Math.max(0,defender.score-1);
+ tile.owner=myId;tile.troops=Math.max(1,sent-defense-1);const me=game.players.find(p=>p.id===myId);if(me)me.score++;return true;
 }
+const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,missile_silo:250,sam_launcher:160,warship:200};
+function localBuild(index:number,type:BuildingType){
+ if(!game)return false;const tile=game.tiles[index],me=game.players.find(p=>p.id===myId);if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
+ tile.buildings=tile.buildings||[];const existing=tile.buildings.filter(b=>b.type===type);
+ if(type==='port'&&!neighborsLocal(index).some(n=>game!.tiles[n]!.terrain==='water')){report('Ports must be built on a coastline.');return false;}
+ if(type==='warship'&&!tile.buildings.some(b=>b.type==='port')){report('Build a Port on this tile before building Warships.');return false;}
+ const max=type==='city'?4:type==='factory'?3:type==='sam_launcher'?2:type==='warship'?6:1;
+ if(existing.length>=max){report('That building is already at its maximum here.');return false;}
+ const cost=buildCosts[type]*(type==='city'&&existing.length?existing.length+1:1);if(me.gold<cost){report('You need '+cost+' gold for this build.');return false;}
+ me.gold-=cost;if(type==='city'&&existing.length)existing[0]!.level=Math.min(4,existing[0]!.level+1);else tile.buildings.push({type,level:1});
+ report(type.replace('_',' ').toUpperCase()+' constructed.');return true;
+}
+function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
 function localRecruit(player:Player){if(!game||player.gold<25)return;const home=game.tiles[player.home];if(home?.owner===player.id){player.gold-=25;home.troops+=15;}}
 function botTurn(bot:Player){
  if(!game)return;const owned=game.tiles.map((t,i)=>t.owner===bot.id?i:-1).filter(i=>i>=0);if(!owned.length)return;
- const opts=owned.flatMap(i=>neighborsLocal(i).filter(n=>game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain').map(n=>({source:i,target:n,t:game!.tiles[n]!})));
+ const opts=owned.flatMap(i=>neighborsLocal(i).filter(n=>game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain'&&game!.tiles[n]!.terrain!=='water').map(n=>({source:i,target:n,t:game!.tiles[n]!})));
  const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
  opts.sort((a,b)=>{const score=(o:typeof opts[number])=>(o.t.owner?15:8)+(o.t.troops*.35)+(neighborsLocal(o.target).filter(n=>game!.tiles[n]!.owner!==bot.id).length*2)+(personality==='builder'&&!o.t.owner?5:0)+(personality==='raider'&&o.t.owner?7:0);return score(b)-score(a);});
  const pick=opts.find(o=>o.source!==bot.home||game!.tiles[o.source]!.troops>12);if(!pick)return;
@@ -113,41 +148,55 @@ function botTurn(bot:Player){
  const tile=pick.t,defender=game.players.find(p=>p.id===tile.owner);source.troops-=send;const survivors=send-(tile.owner?tile.troops:0)-1;if(defender)defender.score=Math.max(0,defender.score-1);tile.owner=bot.id;tile.troops=Math.max(1,survivors);bot.score++;
  if(bot.gold>=25&&personality==='warden'&&game.tick%2===0)localRecruit(bot);
 }
-function localTick(){if(!game||mode!=='single')return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3)));if(game.tick%2===0)for(const t of land)if(t.troops<200)t.troops+=2;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){botTurn(bot);if(game.tick%3===0)botTurn(bot);}render();}
-function tileAt(event:PointerEvent){if(!game)return-1;const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*game.width/r.width),y=Math.floor((event.clientY-r.top)*game.height/r.height);return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;}
+function localTick(){if(!game||mode!=='single')return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){botTurn(bot);if(game.tick%3===0)botTurn(bot);}render();}
+function tileAt(event:MouseEvent|PointerEvent){if(!game)return-1;const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*game.width/r.width),y=Math.floor((event.clientY-r.top)*game.height/r.height);return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;}
 function draw(){
- const targetWidth=Math.round(1500/settings.pixelScale),targetHeight=Math.round(1000/settings.pixelScale);if(canvas.width!==targetWidth||canvas.height!==targetHeight){canvas.width=targetWidth;canvas.height=targetHeight;}
- const current=game;ctx.clearRect(0,0,canvas.width,canvas.height);if(!current){ctx.fillStyle='#101b24';ctx.fillRect(0,0,canvas.width,canvas.height);return;}
+ const targetWidth=Math.max(1800,Math.round(window.innerWidth*2.1/settings.pixelScale)),targetHeight=Math.max(1200,Math.round(window.innerHeight*2.1/settings.pixelScale));
+ if(canvas.width!==targetWidth||canvas.height!==targetHeight){canvas.width=targetWidth;canvas.height=targetHeight;}
+ const current=game;ctx.clearRect(0,0,canvas.width,canvas.height);if(!current){ctx.fillStyle='#152c31';ctx.fillRect(0,0,canvas.width,canvas.height);return;}
  const w=canvas.width/current.width,h=canvas.height/current.height;
- current.tiles.forEach((tile,i)=>{const x=i%current.width*w,y=Math.floor(i/current.width)*h,owner=current.players.find(p=>p.id===tile.owner);
-  const seed=(i*17+Math.floor(i/current.width)*13)%11;ctx.fillStyle=tile.terrain==='mountain'?'#66747b':owner?.color||'#344e42';ctx.fillRect(x,y,w,h);
-  ctx.fillStyle=tile.terrain==='mountain'?'#8d9ba0':tile.terrain==='forest'?'#294d38':owner?owner.color:'#405e4a';ctx.fillRect(x+3,y+3,w-6,h-6);
-  if(tile.terrain==='forest'){ctx.fillStyle='#1e3d2e';for(let k=0;k<3;k++){const tx=x+8+((seed*7+k*13)%(w-16)),ty=y+10+((seed*5+k*11)%(h-22));ctx.fillRect(tx,ty,8,13);ctx.fillRect(tx-4,ty+5,16,7);ctx.fillStyle='#71975b';ctx.fillRect(tx+2,ty+2,4,5);ctx.fillStyle='#1e3d2e';}}
-  else if(tile.terrain==='mountain'){ctx.fillStyle='#c1c9c6';ctx.beginPath();ctx.moveTo(x+8,y+h-7);ctx.lineTo(x+w*.5,y+8);ctx.lineTo(x+w-7,y+h-7);ctx.fill();ctx.fillStyle='#e3e1cc';ctx.beginPath();ctx.moveTo(x+w*.5,y+8);ctx.lineTo(x+w*.38,y+h*.38);ctx.lineTo(x+w*.61,y+h*.38);ctx.fill();}
-  else {ctx.fillStyle=owner?'#ffffff15':'#a2ba8322';for(let k=0;k<5;k++)ctx.fillRect(x+6+((seed*3+k*17)%(w-12)),y+7+((seed*5+k*19)%(h-14)),3,3);}
-  if(tile.owner&&settings.counts){ctx.fillStyle='#0b1218';ctx.fillRect(x+w*.28,y+h*.67,w*.44,h*.2);ctx.fillStyle='#fff';ctx.font='bold '+Math.max(5,15/settings.pixelScale)+'px monospace';ctx.textAlign='center';ctx.fillText(String(tile.troops),x+w*.5,y+h*.83);}
-  if(route.includes(i)){ctx.fillStyle='#fff0a8';ctx.fillRect(x+5,y+5,w-10,h-10);}
-  if(i===selectedSource){ctx.strokeStyle='#fff0a8';ctx.lineWidth=5;ctx.strokeRect(x+4,y+4,w-8,h-8);}
+ current.tiles.forEach((tile,i)=>{const x=i%current.width*w,y=Math.floor(i/current.width)*h,owner=current.players.find(p=>p.id===tile.owner),seed=(i*17+Math.floor(i/current.width)*13)%11;
+  if(tile.terrain==='water'){ctx.fillStyle='#1c5264';ctx.fillRect(x,y,w,h);ctx.fillStyle='#286d7a';ctx.fillRect(x+2,y+2,w-4,h-4);for(let k=0;k<4;k++){ctx.fillStyle='#65a6aa55';ctx.fillRect(x+((seed*7+k*17)%(w-10)),y+((seed*5+k*13)%(h-5)),Math.max(2,w*.05),2);}return;}
+  ctx.fillStyle=owner?.color||'#405c47';ctx.fillRect(x,y,w,h);
+  if(tile.terrain==='mountain'){ctx.fillStyle='#98a6a3';ctx.fillRect(x+2,y+2,w-4,h-4);ctx.fillStyle='#d7d9c9';ctx.beginPath();ctx.moveTo(x+w*.12,y+h*.83);ctx.lineTo(x+w*.5,y+h*.15);ctx.lineTo(x+w*.9,y+h*.83);ctx.fill();ctx.fillStyle='#727f7c';ctx.fillRect(x+w*.38,y+h*.69,w*.25,h*.09);}
+  else if(tile.terrain==='forest'){ctx.fillStyle=owner?owner.color:'#294c39';ctx.fillRect(x+2,y+2,w-4,h-4);for(let k=0;k<6;k++){const tx=x+((seed*11+k*23)%(w-8))+3,ty=y+((seed*7+k*17)%(h-12))+3;ctx.fillStyle='#18382b';ctx.fillRect(tx,ty,4,7);ctx.fillStyle='#5f8d50';ctx.fillRect(tx-2,ty+2,8,3);}}
+  else{ctx.fillStyle=owner?'#ffffff12':'#d4ddb333';for(let k=0;k<12;k++)ctx.fillRect(x+((seed*13+k*19)%(w-4))+2,y+((seed*9+k*11)%(h-4))+2,2,2);}
+  const buildings=tile.buildings||[];if(buildings.length){const glyph:Record<string,string>={city:'C',factory:'F',port:'P',defense_post:'D',missile_silo:'S',sam_launcher:'A',warship:'W'};ctx.fillStyle='#111c20';ctx.fillRect(x+w*.65,y+h*.05,w*.3,h*.25);ctx.fillStyle='#f8e8ad';ctx.font='bold '+Math.max(9,h*.2)+'px monospace';ctx.textAlign='center';ctx.fillText(glyph[buildings[0]!.type]||'•',x+w*.8,y+h*.23);}
+  if(tile.owner&&settings.counts){ctx.fillStyle='#071116bb';ctx.fillRect(x+w*.22,y+h*.72,w*.56,h*.2);ctx.fillStyle='#fff';ctx.font='bold '+Math.max(7,h*.15)+'px monospace';ctx.textAlign='center';ctx.fillText(String(tile.troops),x+w*.5,y+h*.87);}
+  if(i===selectedSource){ctx.strokeStyle='#ffe49a';ctx.lineWidth=Math.max(3,w*.035);ctx.strokeRect(x+2,y+2,w-4,h-4);}
  });
- if(settings.grid){ctx.strokeStyle='rgba(6,13,16,.34)';ctx.lineWidth=1;for(let x=0;x<=current.width;x++){ctx.beginPath();ctx.moveTo(x*w,0);ctx.lineTo(x*w,canvas.height);ctx.stroke();}for(let y=0;y<=current.height;y++){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(canvas.width,y*h);ctx.stroke();}}
+ if(settings.grid){ctx.strokeStyle='rgba(6,13,16,.25)';ctx.lineWidth=1;for(let x=0;x<=current.width;x++){ctx.beginPath();ctx.moveTo(x*w,0);ctx.lineTo(x*w,canvas.height);ctx.stroke();}for(let y=0;y<=current.height;y++){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(canvas.width,y*h);ctx.stroke();}}
 }
 function updateStats(){
  const current=game,me=current?.players.find(p=>p.id===myId),owned=current?.tiles.filter(t=>t.owner===myId).length||0;
  el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);el('online').textContent=String(current?.players.filter(p=>p.connected).length||0);
- el('available-troops').textContent=selectedSource>=0&&current?.tiles[selectedSource]?.owner===myId?current.tiles[selectedSource]!.troops+' TROOPS AVAILABLE':'Select one of your territories';
- const source=current&&selectedSource>=0?current.tiles[selectedSource]:null;const force=source?Math.floor(source.troops*forcePercent/100):0;
- (el('expand') as HTMLButtonElement).disabled=!source||source.owner!==myId||force<1||route.length<2;
- (el('recruit') as HTMLButtonElement).disabled=!me||me.gold<25;
- el('selected-info').textContent=selectedSource>=0&&source?'SOURCE · '+source.troops+' TROOPS · SEND '+force+' ('+forcePercent+'%)':'Choose a tile to inspect.';
- if(current&&selectedSource>=0){const sourceTile=current.tiles[selectedSource]!;el('tile-info').textContent='SOURCE '+(selectedSource%current.width+1)+','+(Math.floor(selectedSource/current.width)+1)+' · '+sourceTile.troops+' TROOPS · ROUTE '+Math.max(0,route.length-1)+' TILES';}else el('tile-info').textContent='SELECT YOUR LAND · DRAG TO DRAW AN EXPANSION ROUTE';
- el('income').textContent='+'+Math.max(1,Math.floor(owned/3))+' TROOPS / TURN';el('turn').textContent=String(current?.tick||0);
+ el('available-troops').textContent=selectedSource>=0&&current?.tiles[selectedSource]?.owner===myId?String(current.tiles[selectedSource]!.troops):'—';
+ const source=current&&selectedSource>=0?current.tiles[selectedSource]:null;
+ el('selected-info').textContent=source?'TROOPS '+source.troops+' · '+(source.terrain||'land').toUpperCase()+' · '+(source.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
+ el('tile-info').textContent=activeBuilding?'BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'CLICK ADJACENT LAND TO EXPAND · SELECTED '+(selectedSource>=0?'TILE '+selectedSource:'NONE');
+ el('tile-title').textContent=activeBuilding?'CONSTRUCTION MODE':'WORLD MAP';
+ el('income').textContent='+'+Math.max(1,Math.floor(owned/3))+' GOLD / TURN';el('turn').textContent=String(current?.tick||0);
+ const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.';
+ document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
 }
-function render(){if(!game)return;el('leaderboard').innerHTML=game.players.slice().sort((a,b)=>b.score-a.score).map((p,i)=>'<div class="rank"><b>'+(i+1)+'</b><i style="background:'+p.color+'"></i><span>'+escapeHtml(p.name)+(p.id===myId?' (YOU)':'')+'</span><strong>'+p.score+'</strong></div>').join('');const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();}
+function render(){if(!game)return;el('leaderboard')?.replaceChildren();const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();}
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));}
-canvas.addEventListener('pointerdown',event=>{if(!game)return;const i=tileAt(event);if(i<0)return;const tile=game.tiles[i]!;if(tile.owner===myId){selectedSource=i;route=[i];dragging=true;canvas.setPointerCapture(event.pointerId);}else if(selectedSource>=0&&neighborsLocal(selectedSource).includes(i)){route=[selectedSource,i];dragging=true;canvas.setPointerCapture(event.pointerId);}updateStats();draw();});
-canvas.addEventListener('pointermove',event=>{if(!dragging||!game)return;const i=tileAt(event);if(i<0||!route.length||i===route[route.length-1])return;if(!neighborsLocal(route[route.length-1]!).includes(i)||route.includes(i)||route.length>=80)return;route.push(i);updateStats();draw();});
-canvas.addEventListener('pointerup',()=>{if(!dragging)return;dragging=false;if(route.length>1)report('Route ready: '+(route.length-1)+' tiles. Press EXPAND / ATTACK to send troops.');updateStats();draw();});
-canvas.addEventListener('pointercancel',()=>{dragging=false;});
-el('expand').addEventListener('click',()=>{if(!game||selectedSource<0||route.length<2)return;const payload={type:'expand',source:selectedSource,path:route.slice(1),percent:forcePercent};if(mode==='single'){if(localExpand(selectedSource,route,forcePercent))report('Troops advanced along the route.');else report('Not enough troops to complete that route.');render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(payload));route=[selectedSource];updateStats();draw();});
+canvas.addEventListener('click',event=>{
+ if(!game)return;const index=tileAt(event);if(index<0)return;const tile=game.tiles[index]!;
+ if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
+ if(tile.owner===myId){selectedSource=index;report('Territory selected. Click adjacent neutral or enemy land to expand.');updateStats();draw();return;}
+ const adjacent=neighborsLocal(index).filter(n=>game!.tiles[n]!.owner===myId);
+ if(!adjacent.length){selectedSource=-1;updateStats();draw();return;}
+ if(mode==='single'){const won=localClaim(index,forcePercent);report(won?'Territory captured!':'Attack failed or was repelled. Try sending more troops.');render();}
+ else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',tile:index,percent:forcePercent}));
+});
+document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
+document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
+document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.addEventListener('click',()=>{activeBuilding=button.dataset.building as BuildingType;document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Build mode: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your territories.');updateStats();}));
 el('recruit').addEventListener('click',()=>{if(mode==='single'&&game){const p=game.players.find(v=>v.id===myId);if(p)localRecruit(p);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'recruit'}));});
-applySettings();showScreen('menu');getNickname();
+el('recruit-large').addEventListener('click',()=>el('recruit').click());
+el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selectedSource=-1;updateStats();draw();});
+el('center-map').addEventListener('click',()=>{canvas.style.transform='translate(0,0) scale(1)';});
+window.addEventListener('keydown',event=>{if(event.key==='Escape'){activeBuilding=null;updateStats();draw();}if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement)return;const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','missile_silo','sam_launcher','warship'];if(key>=1&&key<=7){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}});
+window.addEventListener('resize',()=>draw());
+applySettings();showScreen('menu');getNickname();applySettings();showScreen('menu');getNickname();
