@@ -109,7 +109,7 @@ async function connect(){
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);selectedSource=-1;activeBuilding=null;myId='human';
- const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[305,2354,2105,554];
+ const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[305,354,2045,2094];
  const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
  const tiles:Tile[]=Array.from({length:2400},(_,i)=>{const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;const coast=x<2||y<2||x>=58||y>=38;const lake=Math.abs(x-43)<3&&Math.abs(y-19)<4;return{owner:null,terrain:coast||lake?'water':n>.9?'mountain':n>.72?'forest':'plain',troops:0,buildings:[]};});
  starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:40,buildings:[]};});
@@ -175,11 +175,11 @@ function updateStats(){
  el('selected-info').textContent=source?'TROOPS '+source.troops+' · '+(source.terrain||'land').toUpperCase()+' · '+(source.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
  el('tile-info').textContent=activeBuilding?'BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'CLICK ADJACENT LAND TO EXPAND · SELECTED '+(selectedSource>=0?'TILE '+selectedSource:'NONE');
  el('tile-title').textContent=activeBuilding?'CONSTRUCTION MODE':'WORLD MAP';
- el('income').textContent='+'+Math.max(1,Math.floor(owned/3))+' GOLD / TURN';el('turn').textContent=String(current?.tick||0);
+ el('turn').textContent=String(current?.tick||0);
  const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.';
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
 }
-function render(){if(!game)return;el('leaderboard')?.replaceChildren();const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();}
+function render(){if(!game)return;const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();}
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));}
 canvas.addEventListener('click',event=>{
  if(!game)return;const index=tileAt(event);if(index<0)return;const tile=game.tiles[index]!;
