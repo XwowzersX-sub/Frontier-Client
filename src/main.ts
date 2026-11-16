@@ -28,7 +28,7 @@ app.innerHTML = `
     <label>🧭 START REGION <select id="start-region"><option value="auto">🎲 Anywhere</option><option value="northwest">↖ Northwest</option><option value="north">↑ North</option><option value="northeast">↗ Northeast</option><option value="west">← West</option><option value="center" selected>◎ Center</option><option value="east">→ East</option><option value="southwest">↙ Southwest</option><option value="south">↓ South</option><option value="southeast">↘ Southeast</option></select></label>
     <label>🤖 AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>12</option><option>16</option><option>20</option><option selected>24</option><option>32</option><option>40</option><option>49</option></select></label>
     <label>AI DIFFICULTY <select id="solo-difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
-    <label>🏆 LAND WIN TARGET <select id="solo-win"><option value="60">60%</option><option value="70">70%</option><option value="80" selected>80% · WORLD CONTROL</option><option value="90">90%</option></select></label>
+    <label>🏆 WIN CONDITION <select id="solo-win" disabled><option value="80" selected>80% WORLD CONTROL OR LAST STANDING</option></select></label>
     <label>⏱ MATCH LENGTH <select id="solo-length"><option value="0" selected>Unlimited</option><option value="10">10 Minutes</option><option value="20">20 Minutes</option><option value="40">40 Minutes</option></select></label>
    </div>
   </details>
@@ -213,8 +213,8 @@ function startSinglePlayer(){
  const teamMinimum=soloMode==='duos'?3:soloMode==='trios'?5:soloMode==='squads'?7:0;
  if(soloBotCount<teamMinimum){soloBotCount=teamMinimum;(el('solo-bots') as HTMLSelectElement).value=String(teamMinimum);}
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
- soloWinPercent=Number((el('solo-win') as HTMLSelectElement).value);
- soloLengthMinutes=Number((el('solo-length') as HTMLSelectElement).value);
+ soloWinPercent=80;
+ soloLengthMinutes=0;
  soloSpawnPreference=(el('start-region') as HTMLSelectElement).value;
  soloRandomSpawn=(el('sandbox-random') as HTMLInputElement).checked;soloInfiniteGold=(el('sandbox-gold') as HTMLInputElement).checked;soloInfiniteTroops=(el('sandbox-troops') as HTMLInputElement).checked;soloAnonymous=(el('sandbox-anonymous') as HTMLInputElement).checked;
  const actualMap=soloMap==='random'?WORLD_MAPS[Math.floor(Math.random()*WORLD_MAPS.length)]!.id:soloMap;
@@ -261,9 +261,7 @@ function checkSoloWinner(){
  let winningEntry=[...groups.entries()].find(([,group])=>group.land/playable>=soloWinPercent/100);
  const surviving=[...groups.entries()].filter(([,group])=>group.land>0);
  const lastStanding=groups.size>1&&surviving.length===1;
- const timeExpired=soloLengthMinutes>0&&game.tick>=soloLengthMinutes*15;
  if(!winningEntry&&lastStanding)winningEntry=surviving[0];
- if(!winningEntry&&timeExpired)winningEntry=[...groups.entries()].sort((a,b)=>b[1].land-a[1].land)[0];
  if(!winningEntry)return;
  const [winningTeam,winner]=winningEntry;
  const human=game.players.find(p=>p.id==='human');
@@ -271,7 +269,7 @@ function checkSoloWinner(){
  matchWinner=winner.name;soloPaused=true;if(localTimer)clearInterval(localTimer);
  el('match-result').textContent=isPlayerTeam?'VICTORY':'DEFEAT';
  const landPercent=Math.round(winner.land/playable*100);
- el('match-result-detail').textContent=timeExpired?'Time expired · '+landPercent+'% of playable land.':(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+(lastStanding?' is the last commander standing.':' reached '+soloWinPercent+'% land.');
+ el('match-result-detail').textContent=(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+(lastStanding?' is the last commander standing.':' reached '+soloWinPercent+'% of the playable world.');
  el('match-banner').classList.remove('hidden');
  report(winner.name+(soloMode==='ffa'?'':' and their allies')+' won the campaign. Start a new match to play again.');
 }
@@ -302,7 +300,7 @@ function restoreSoloSave(value:unknown):boolean{
  soloMap=save.soloMap||'continents';soloBotCount=Math.max(0,Math.min(49,Number(save.soloBotCount)||0));
  soloDifficulty=save.soloDifficulty==='relaxed'||save.soloDifficulty==='intense'||save.soloDifficulty==='impossible'?save.soloDifficulty:'balanced';
  soloWinPercent=[60,70,80,90].includes(Number(save.soloWinPercent))?Number(save.soloWinPercent):80;
- soloLengthMinutes=[0,10,20,40].includes(Number(save.soloLengthMinutes))?Number(save.soloLengthMinutes):20;
+ soloLengthMinutes=0;
  soloSpeed=[1,2,4].includes(Number(save.soloSpeed))?Number(save.soloSpeed):1;
  soloRandomSpawn=Boolean(save.soloRandomSpawn);soloInfiniteGold=Boolean(save.soloInfiniteGold);soloInfiniteTroops=Boolean(save.soloInfiniteTroops);soloAnonymous=Boolean(save.soloAnonymous);soloSpawnPreference=save.soloSpawnPreference||'center';
  mode='single';myId='human';selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;resetCamera();
