@@ -64,3 +64,10 @@ body{background:#091219;color:#e8eee9}
 .match-banner span{font:10px 'DM Mono';color:#d9e1d8}
 .match-banner button{margin-top:7px}
 @media(max-width:600px){.match-setup{padding:9px}.setup-grid{gap:7px}.setup-grid select{padding:8px 5px;font-size:8px}.solo-toolbar{grid-column:1/-1;grid-row:2;justify-content:center}.world-actions{display:flex;flex-wrap:wrap;justify-content:flex-end}.match-banner{top:24%;padding:18px 22px}.match-banner b{font-size:27px}}
+
+
+#map{transform-origin:center center;will-change:transform}
+.camera-help{color:#829c97;font:7px 'DM Mono';letter-spacing:.35px}
+.match-setup{box-shadow:inset 0 1px #ffffff0a}
+.solo-toolbar .world-icon{font-size:8px;padding:8px 10px}
+#pause-solo:hover,#speed-solo:hover{border-color:#e8c76e;color:#ffe6a4}
