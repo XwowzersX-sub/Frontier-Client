@@ -11,7 +11,7 @@ type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
 type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
 type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number };
-type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number };
+type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; capacity?: number };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
 <div id="menu-screen" class="screen menu-screen">
@@ -20,15 +20,16 @@ app.innerHTML = `
   <div class="eyebrow">COMMANDER ACCESS</div>
   <h1>Choose your<br><em>frontier.</em></h1>
   <label class="field-label" for="nickname">COMMANDER NAME</label><input id="nickname" maxlength="18" placeholder="Enter nickname" autocomplete="nickname">
-  <div class="menu-actions"><button id="menu-single" class="primary big">SINGLE PLAYER <small>CONFIGURE A SOLO CAMPAIGN</small></button><button id="menu-multi" class="secondary big">MULTIPLAYER <small>JOIN THE ONLINE WORLD</small></button></div>
+  <div class="menu-actions"><button id="menu-single" class="primary big">SINGLE PLAYER <small>CONFIGURE A SOLO CAMPAIGN</small></button><button id="menu-multi" class="secondary big">🌐 JOIN LIVE MATCH <small>RANDOM WORLD · UP TO 50 COMMANDERS</small></button></div>
   <details class="match-setup" open><summary>SOLO MATCH SETUP</summary>
    <div class="setup-grid">
     <label>MODE <select id="solo-mode"><option value="ffa">Free for All</option><option value="duos">Duos</option><option value="trios">Trios</option><option value="squads">Squads</option></select></label>
-    <label>MAP <select id="solo-map"><option value="continents">Continents</option><option value="islands">Island Chain</option><option value="pangaea">Pangaea</option><option value="highlands">Highlands</option></select></label>
-    <label>AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label>
+    <label>🗺 MAP <select id="solo-map"><option value="random">🎲 Random World</option><option value="continents">🌎 Continents</option><option value="islands">🏝 Island Chain</option><option value="pangaea">🌐 Pangaea</option><option value="highlands">⛰ Highlands</option><option value="twin-worlds">🌗 Twin Worlds</option><option value="inland-sea">🌊 Inland Sea</option><option value="atolls">🪸 Atolls</option><option value="supercontinent">🧭 Supercontinent</option><option value="fractal">🌀 Fractal Wilds</option><option value="earthlike">🌍 Earthlike</option></select></label>
+    <label>🧭 START REGION <select id="start-region"><option value="auto">🎲 Anywhere</option><option value="northwest">↖ Northwest</option><option value="north">↑ North</option><option value="northeast">↗ Northeast</option><option value="west">← West</option><option value="center" selected>◎ Center</option><option value="east">→ East</option><option value="southwest">↙ Southwest</option><option value="south">↓ South</option><option value="southeast">↘ Southeast</option></select></label>
+    <label>🤖 AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>12</option><option>16</option><option>20</option><option selected>24</option><option>32</option><option>40</option><option>49</option></select></label>
     <label>AI DIFFICULTY <select id="solo-difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
-    <label>LAND WIN TARGET <select id="solo-win"><option value="60">60%</option><option value="70">70%</option><option value="80" selected>80%</option><option value="90">90%</option></select></label>
-    <label>MATCH LENGTH <select id="solo-length"><option value="0">Unlimited</option><option value="10">10 Minutes</option><option value="20" selected>20 Minutes</option><option value="40">40 Minutes</option></select></label>
+    <label>🏆 LAND WIN TARGET <select id="solo-win"><option value="60">60%</option><option value="70">70%</option><option value="80" selected>80% · WORLD CONTROL</option><option value="90">90%</option></select></label>
+    <label>⏱ MATCH LENGTH <select id="solo-length"><option value="0" selected>Unlimited</option><option value="10">10 Minutes</option><option value="20">20 Minutes</option><option value="40">40 Minutes</option></select></label>
    </div>
   </details>
   <details class="sandbox-settings"><summary>SANDBOX MODIFIERS</summary>
@@ -54,17 +55,17 @@ app.innerHTML = `
  <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas>
  <div class="world-topbar">
   <div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div>
-  <div class="world-metrics"><span>COMMANDER <b id="commander-label">COMMANDER</b></span><span>GOLD <b id="gold">0</b></span><span>LAND <b id="territory">0</b></span><span>FIELD RANK <b id="rank-label">IRON</b></span><span>TURN <b id="turn">0</b></span><span>TIME <b id="time-left">∞</b></span><span>ONLINE <b id="online">0</b></span></div>
+  <div class="world-metrics"><span>👑 <b id="commander-label">COMMANDER</b></span><span>🪙 <b id="gold">0</b></span><span>🗺 <b id="territory">0</b></span><span>🏅 <b id="rank-label">IRON</b></span><span>⏱ <b id="turn">0</b></span><span>⌛ <b id="time-left">∞</b></span><span>🌐 <b id="online">0/50</b></span><span>🌎 <b id="world-name">—</b></span><span>🔁 <b id="round">1</b></span></div>
   <div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙</button><button id="main-menu" class="world-icon">MENU</button></div>
  </div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
- <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">CLICK YOUR LAND TO SELECT IT · CLICK ADJACENT LAND TO EXPAND</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
+ <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">🧭 SELECT A SOURCE · CLICK A DESTINATION TO MARCH TROOPS</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
  <div class="floating-dock">
-  <div class="dock-profile"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>TROOPS</small><b id="available-troops">0</b></div></div>
+  <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ TROOPS TO SEND</small><b id="available-troops">0</b></div></div>
   <div class="dock-main">
    <div class="dock-tabs"><button class="dock-tab active" data-tab="command">COMMAND</button><button class="dock-tab" data-tab="build">BUILD</button><button class="dock-tab" data-tab="units">UNITS</button></div>
    <div id="command-panel" class="dock-panel">
-    <div class="ratio-control"><small>ATTACK RATIO</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
+    <div class="ratio-control"><small>⚔ TROOPS TO SEND</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
     <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="center-map" class="dock-action">◎ CENTER</button></div>
    </div>
    <div id="build-panel" class="dock-panel hidden">
@@ -76,7 +77,7 @@ app.innerHTML = `
      <button data-building="market"><kbd>5</kbd><b>¤ MARKET</b><small>130 G</small></button>
      <button data-building="farm"><kbd>6</kbd><b>♣ FARM</b><small>80 G</small></button>
      
-    </div><div class="dock-hint" id="build-hint">Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.</div>
+    </div><div class="dock-hint" id="build-hint">🏗 Choose a structure, then click one of your land tiles. Ports need a coastline.</div>
    </div>
    <div id="units-panel" class="dock-panel hidden">
     <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +15</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
@@ -85,7 +86,7 @@ app.innerHTML = `
      <div class="chat-entry"><input id="chat-input" maxlength="80" placeholder="Send a quick message…"><button id="send-chat" class="dock-action">SEND</button></div>
     </div>
     <div id="solo-save-actions" class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div>
-    <div class="dock-hint">Click adjacent neutral or enemy territory to expand. WASD pans, Q/E zoom, C centers, M toggles grid, Space pauses. Campaign saves can be exported and shared.</div>
+    <div class="dock-hint">🧭 Select one of your territories, set a troop percentage, then click a destination up to 15 tiles away. Your army marches that direction and captures reachable land. WASD pans · Q/E zoom · C centers · M grid · Space pause.</div>
    </div>
 
   </div>
@@ -102,7 +103,7 @@ let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
-let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=20,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false;
+let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='random',soloBotCount=24,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=0,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false,soloSpawnPreference='center';
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
@@ -134,45 +135,111 @@ async function connect(){
  reconnecting=false;setConnection('SERVER UNAVAILABLE');report('Could not wake server. Check Render and try again.');
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
+
+const WORLD_WIDTH=180,WORLD_HEIGHT=110,MAX_MARCH_DISTANCE=15;
+const WORLD_MAPS=[
+ {id:'continents',name:'Continents'},{id:'islands',name:'Island Chain'},{id:'pangaea',name:'Pangaea'},
+ {id:'highlands',name:'Highlands'},{id:'twin-worlds',name:'Twin Worlds'},{id:'inland-sea',name:'Inland Sea'},
+ {id:'atolls',name:'Atolls'},{id:'supercontinent',name:'Supercontinent'},{id:'fractal',name:'Fractal Wilds'},{id:'earthlike',name:'Earthlike'}
+];
+const SPAWN_POINTS:Record<string,[number,number]>={northwest:[.16,.16],north:[.5,.12],northeast:[.84,.16],west:[.12,.5],center:[.5,.5],east:[.88,.5],southwest:[.16,.84],south:[.5,.88],southeast:[.84,.84]};
+function mapTitle(id:string){return WORLD_MAPS.find(m=>m.id===id)?.name||'Random World';}
+function createWorldTiles(mapId:string,seed:number):Tile[]{
+ return Array.from({length:WORLD_WIDTH*WORLD_HEIGHT},(_,i)=>{
+  const x=i%WORLD_WIDTH,y=Math.floor(i/WORLD_WIDTH),nx=(x-WORLD_WIDTH/2)/(WORLD_WIDTH/2),ny=(y-WORLD_HEIGHT/2)/(WORLD_HEIGHT/2);
+  const wave=Math.sin(x*.055+seed)*.42+Math.cos(y*.073-seed*.7)*.36+Math.sin((x+y)*.031+seed*1.4)*.27+Math.cos((x-y)*.039-seed)*.2;
+  const n=Math.abs(Math.sin((x+seed*31.7)*12.9898+(y-seed*17.3)*78.233)*43758.5453)%1;
+  const d1=Math.hypot((nx+.48)*.94,(ny+.05)*1.12),d2=Math.hypot((nx-.43)*1.05,(ny-.1)*1.06);
+  let land=wave>-.2;
+  if(mapId==='islands')land=wave>.18;
+  if(mapId==='pangaea')land=nx*nx*.86+ny*ny*1.2<.82&&wave>-.95;
+  if(mapId==='highlands')land=wave>-.32;
+  if(mapId==='twin-worlds')land=(d1<.73||d2<.72)&&wave>-.48;
+  if(mapId==='inland-sea')land=wave>-.18&&!(Math.pow(nx/.42,2)+Math.pow(ny/.34,2)<1);
+  if(mapId==='atolls'){const r1=Math.abs(Math.hypot(nx+.42,ny+.08)-.34)<.15,r2=Math.abs(Math.hypot(nx-.4,ny-.13)-.3)<.14;land=r1||r2||(wave>.45&&Math.abs(nx)<.8);}
+  if(mapId==='supercontinent')land=Math.abs(nx)<.91&&Math.abs(ny)<.82&&wave>-.78;
+  if(mapId==='fractal')land=wave>-.05;
+  if(mapId==='earthlike')land=(wave>-.08&&(nx<.28||ny>-.38))||(d1<.62&&wave>-.55);
+  if(x<2||y<2||x>=WORLD_WIDTH-2||y>=WORLD_HEIGHT-2)land=false;
+  if(mapId==='pangaea'&&Math.abs(nx+.16)<.035&&Math.abs(ny-.02)<.16)land=false;
+  if(mapId==='inland-sea'&&Math.abs(nx)<.42&&Math.abs(ny)<.34)land=false;
+  const mountainChance=mapId==='highlands'?.77:.955;
+  const terrain:Tile['terrain']=!land?'water':n>mountainChance?'mountain':n>.66?'forest':'plain';
+  return{owner:null,terrain,troops:0,buildings:[]};
+ });
+}
+function getSpawnSites(){
+ const sites:number[]=[];
+ for(let row=0;row<5;row++)for(let col=0;col<10;col++){
+  const x=Math.round(12+col*(WORLD_WIDTH-24)/9),y=Math.round(10+row*(WORLD_HEIGHT-20)/4);
+  sites.push(y*WORLD_WIDTH+x);
+ }
+ return sites;
+}
+function chooseSpawnSite(preference:string,used:number[],farthest=false){
+ const available=getSpawnSites().filter(s=>!used.includes(s));
+ if(!available.length)return getSpawnSites().find(s=>!used.includes(s))??Math.floor(WORLD_HEIGHT/2)*WORLD_WIDTH+Math.floor(WORLD_WIDTH/2);
+ const point=SPAWN_POINTS[preference]||SPAWN_POINTS.center!;
+ available.sort((a,b)=>{
+  const ax=(a%WORLD_WIDTH)/WORLD_WIDTH-point[0],ay=Math.floor(a/WORLD_WIDTH)/WORLD_HEIGHT-point[1];
+  const bx=(b%WORLD_WIDTH)/WORLD_WIDTH-point[0],by=Math.floor(b/WORLD_WIDTH)/WORLD_HEIGHT-point[1];
+  const da=ax*ax+ay*ay,db=bx*bx+by*by;
+  if(farthest&&used.length){
+   const minA=Math.min(...used.map(u=>Math.hypot(a%WORLD_WIDTH-u%WORLD_WIDTH,Math.floor(a/WORLD_WIDTH)-Math.floor(u/WORLD_WIDTH))));
+   const minB=Math.min(...used.map(u=>Math.hypot(b%WORLD_WIDTH-u%WORLD_WIDTH,Math.floor(b/WORLD_WIDTH)-Math.floor(u/WORLD_WIDTH))));
+   return minB-minA||da-db;
+  }
+  return da-db;
+ });
+ return available[0]!;
+}
+function clearSpawnArea(tiles:Tile[],at:number,owner:string,playerColor:string){
+ const sx=at%WORLD_WIDTH,sy=Math.floor(at/WORLD_WIDTH);
+ for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
+  const x=sx+dx,y=sy+dy;if(x<1||y<1||x>=WORLD_WIDTH-1||y>=WORLD_HEIGHT-1)continue;
+  const tile=tiles[y*WORLD_WIDTH+x]!;
+  if(tile.terrain==='water'||tile.terrain==='mountain')tile.terrain='plain';
+ }
+ tiles[at]={owner,terrain:'plain',troops:36,buildings:[]};
+}
+function playerColor(slot:number){return 'hsl('+((slot*137.508+195)%360).toFixed(1)+' 66% 58%)';}
+const BOT_NAMES=['Astra','Vex','Orion','Nova','Mako','Sable','Atlas','Echo','Rune','Nyx','Sol','Kestrel','Mira','Drift','Onyx','Lumen','Rook','Cinder','Aero','Quill','Zephyr','Iris','Juno','Comet','Flint','Argo','Talon','Lyra','Kairo','Ember','Pixel','Nori','Cobalt','Warden','Basil','Riven','Mistral','Sora','Piper','Tundra','Vega','Fable','Koda','Boreal','Axiom','Indigo','Marble','Skye','Tessera'];
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);
- selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;resetCamera();
+ selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;resetCamera();myId='human';
  soloMode=(el('solo-mode') as HTMLSelectElement).value as typeof soloMode;
  soloMap=(el('solo-map') as HTMLSelectElement).value;
- soloBotCount=Number((el('solo-bots') as HTMLSelectElement).value);
+ soloBotCount=Math.max(0,Math.min(49,Number((el('solo-bots') as HTMLSelectElement).value)||0));
  const teamMinimum=soloMode==='duos'?3:soloMode==='trios'?5:soloMode==='squads'?7:0;
  if(soloBotCount<teamMinimum){soloBotCount=teamMinimum;(el('solo-bots') as HTMLSelectElement).value=String(teamMinimum);}
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
  soloWinPercent=Number((el('solo-win') as HTMLSelectElement).value);
  soloLengthMinutes=Number((el('solo-length') as HTMLSelectElement).value);
+ soloSpawnPreference=(el('start-region') as HTMLSelectElement).value;
  soloRandomSpawn=(el('sandbox-random') as HTMLInputElement).checked;soloInfiniteGold=(el('sandbox-gold') as HTMLInputElement).checked;soloInfiniteTroops=(el('sandbox-troops') as HTMLInputElement).checked;soloAnonymous=(el('sandbox-anonymous') as HTMLInputElement).checked;
- const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f','#57b78a','#d77eb0','#78aeb5','#c18b62'];
- const commanders=soloAnonymous?['Commander 1','Nation A','Nation B','Nation C','Nation D','Nation E','Nation F','Nation G']:[nickname,'Astra','Vex','Orion','Nova','Mako','Sable','Atlas'];
- const startsBase=[305,354,2045,2094,330,2070,1205,1254],starts=[...startsBase];
- if(soloRandomSpawn){for(let i=starts.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[starts[i],starts[j]]=[starts[j]!,starts[i]!];}}
+ const actualMap=soloMap==='random'?WORLD_MAPS[Math.floor(Math.random()*WORLD_MAPS.length)]!.id:soloMap;
+ const mapName=mapTitle(actualMap);
+ const tiles=createWorldTiles(actualMap,Math.random()*1000);
  const teamSize=soloMode==='duos'?2:soloMode==='trios'?3:soloMode==='squads'?4:1;
- const players:Player[]=commanders.slice(0,soloBotCount+1).map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!,team:Math.floor(i/teamSize)}));
- const tiles:Tile[]=Array.from({length:2400},(_,i)=>{
-  const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;
-  const edge=x<2||y<2||x>=58||y>=38;
-  const islandNoise=Math.sin(x*.19)*Math.cos(y*.23)+Math.sin((x+y)*.12)*.4+Math.cos((x-y)*.17)*.25;
-  const internalWater=soloMap==='islands'?islandNoise<-.43:soloMap==='continents'?Math.abs(x-43)<3&&Math.abs(y-19)<4:soloMap==='pangaea'?false:false;
-  const mountain=soloMap==='highlands'?n>.69:n>.9;
-  const terrain:Tile['terrain']=edge||internalWater?'water':mountain?'mountain':n>.72?'forest':'plain';
-  return{owner:null,terrain,troops:0,buildings:[]};
+ const totalPlayers=soloBotCount+1,used:number[]=[];
+ const preference=soloRandomSpawn?['northwest','north','northeast','west','center','east','southwest','south','southeast'][Math.floor(Math.random()*9)]!:soloSpawnPreference;
+ const humanHome=chooseSpawnSite(preference,used,false);used.push(humanHome);
+ const names=soloAnonymous?['Commander',...Array.from({length:49},(_,i)=>'Nation '+String(i+1))]:[nickname,...BOT_NAMES.slice(0,49)];
+ const players:Player[]=Array.from({length:totalPlayers},(_,i)=>{
+  const home=i===0?humanHome:chooseSpawnSite('center',used,true);
+  if(i>0)used.push(home);
+  const id=i===0?'human':'bot-'+i;
+  clearSpawnArea(tiles,home,id,playerColor(i));
+  return{id,name:(names[i]||('Commander '+(i+1)))+(i>BOT_NAMES.length?' '+i:''),color:playerColor(i),gold:160,score:0,connected:true,home,team:Math.floor(i/teamSize)};
  });
- starts.slice(0,players.length).forEach((at,i)=>{
-  const sx=at%60,sy=Math.floor(at/60);
-  for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){const px=sx+dx,py=sy+dy;if(px>=0&&px<60&&py>=0&&py<40){const tile=tiles[py*60+px]!;if(tile.terrain==='water'||tile.terrain==='mountain')tile.terrain='plain';}}
-  tiles[at]={owner:players[i]!.id,terrain:'plain',troops:20,buildings:[]};
- });
- game={width:60,height:40,tiles,players,tick:0};
- setConnection('SOLO CAMPAIGN',true);
+ game={width:WORLD_WIDTH,height:WORLD_HEIGHT,tiles,players,tick:0,round:1,mapName,capacity:50};
+ setConnection('SOLO MATCH',true);
  el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
  (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
  (el('speed-solo') as HTMLButtonElement).textContent='1× SPEED';
  el('match-banner').classList.add('hidden');
- report(players.length===1?'Empty frontier. Expand and reach the land victory target.':players.length-1+' AI commanders · '+soloMode.toUpperCase()+' · '+soloDifficulty.toUpperCase()+' · '+soloMap.toUpperCase()+'.');
+ el('world-name').textContent=mapName.toUpperCase();el('round').textContent='1';
+ report(players.length===1?'🌌 Empty frontier. Expand to the land victory target.':'🤖 '+soloBotCount+' AI commanders · '+soloMode.toUpperCase()+' · '+soloDifficulty.toUpperCase()+' · '+mapName.toUpperCase()+'. Select a territory and send an army.');
  render();resetSoloTimer();
 }
 function resetSoloTimer(){
