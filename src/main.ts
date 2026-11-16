@@ -55,7 +55,7 @@ el('signup').addEventListener('click', async () => {
  el('auth-message').textContent = error?.message || 'Account created. Check your email if confirmation is enabled.';
 });
 el('logout').addEventListener('click', async () => { await supabase.auth.signOut(); await refreshAuth(); if (socket) socket.close(); });
-el('connect').addEventListener('click', () => void connect()); // safe if an optional connect control is added later
+el('connect').addEventListener('click', () => void connect());
 async function connect() {
  if (serverUrl.includes('YOUR-RENDER')) { report('Set VITE_SERVER_URL in GitHub Actions Variables first.'); return; }
  if (socket && socket.readyState === WebSocket.OPEN) { socket.close(); return; }
