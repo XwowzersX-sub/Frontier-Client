@@ -10,7 +10,7 @@ const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.
 type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
 type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
-type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number };
+type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number; territory?:number; troopsTotal?:number; troopMax?:number };
 type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:number[];step?:number;from?:number;to?:number;destinationOwner?:string};
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; updates?:Array<[number,Tile]> };
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -147,6 +147,7 @@ const WORLD_MAPS=[
 ];
 const SPAWN_POINTS:Record<string,[number,number]>={northwest:[.16,.16],north:[.5,.12],northeast:[.84,.16],west:[.12,.5],center:[.5,.5],east:[.88,.5],southwest:[.16,.84],south:[.5,.88],southeast:[.84,.84]};
 function mapTitle(id:string){return WORLD_MAPS.find(m=>m.id===id)?.name||'Random World';}
+function mapIdFromTitle(name:string){return WORLD_MAPS.find(m=>m.name.toLowerCase()===String(name).toLowerCase())?.id||String(name||'continents').toLowerCase().replace(/[^a-z]+/g,'-');}
 function handleNetworkState(incoming:GameState){
  if(!incoming||!Number.isInteger(incoming.width)||!Number.isInteger(incoming.height))return;
  const newWorld=!game||game.width!==incoming.width||game.height!==incoming.height||game.mapSeed!==incoming.mapSeed;
@@ -163,9 +164,9 @@ function handleNetworkState(incoming:GameState){
  setConnection('ONLINE',true);draw();requestChunksForView();updateStats();
 }
 function handleNetworkChunk(packet:any){
- if(!game||!Array.isArray(packet.items))return;
+ if(!game||!Array.isArray(packet.items)||Number(packet.mapSeed)!==Number(game.mapSeed))return;
  for(const item of packet.items)if(item&&Number.isInteger(item.i)&&item.tile&&item.i>=0&&item.i<game.tiles.length)game.tiles[item.i]=item.tile as Tile;
- const key=packet.cx+':'+packet.cy;receivedChunks.add(key);requestedChunks.delete(key);render();
+ const key=packet.cx+':'+packet.cy;receivedChunks.add(key);requestedChunks.delete(key);render();requestChunksForView();
 }
 function requestChunksForView(){
  if(mode!=='multi'||!game||socket?.readyState!==WebSocket.OPEN)return;
@@ -199,13 +200,13 @@ function terrainAt(x:number,y:number,mapId:string,seed:number):Tile['terrain']{
  const mountainChance=mapId==='highlands'?.77:.955;
  return !land?'water':n>mountainChance?'mountain':n>.66?'forest':'plain';
 }
-function baseTileAt(index:number,mapId=game?.mapName||'continents',seed=game?.mapSeed||1):Tile{
+function baseTileAt(index:number,mapId=mapIdFromTitle(game?.mapName||'continents'),seed=game?.mapSeed||1):Tile{
  const x=index%WORLD_WIDTH,y=Math.floor(index/WORLD_WIDTH);
  return{owner:null,terrain:terrainAt(x,y,mapId||'continents',seed),troops:0,buildings:[]};
 }
 function getGameTile(index:number):Tile{
  if(!game||index<0||index>=game.width*game.height)return{owner:null,terrain:'water',troops:0,buildings:[]};
- return game.tiles[index]||baseTileAt(index,game.mapName||'continents',game.mapSeed||1);
+ return game.tiles[index]||baseTileAt(index,mapIdFromTitle(game.mapName||'continents'),game.mapSeed||1);
 }
 function createWorldTiles(mapId:string,seed:number):{tiles:Tile[];playable:number}{
  const tiles=new Array<Tile>(WORLD_WIDTH*WORLD_HEIGHT);let playable=0;
@@ -702,13 +703,15 @@ function fieldRank(score:number){
 }
 function updateStats(){
  const current=game,me=current?.players.find(p=>p.id===myId);
- let owned=0,troopCurrent=0,cityLevels=0,portCount=0;
+ let owned=0,troopCurrent=0,cityLevels=0;
  current?.tiles.forEach(tile=>{
   if(!tile||tile.owner!==myId)return;
   owned++;troopCurrent+=tile.troops;
-  for(const building of tile.buildings||[]){if(building.type==='city')cityLevels+=building.level;if(building.type==='port')portCount++;}
+  for(const building of tile.buildings||[])if(building.type==='city')cityLevels+=building.level;
  });
- const troopMaximum=Math.floor(2*(Math.pow(Math.max(1,owned),.6)*15+50)+cityLevels*180);
+ if(mode==='multi'&&me?.territory!==undefined)owned=me.territory;
+ if(mode==='multi'&&me?.troopsTotal!==undefined)troopCurrent=me.troopsTotal;
+ const troopMaximum=mode==='multi'?(me?.troopMax??Math.floor(2*(Math.pow(Math.max(1,owned),.6)*15+50)+cityLevels*180)):Math.floor(2*(Math.pow(Math.max(1,owned),.6)*15+50)+cityLevels*180);
  el('troop-cap-label').textContent=troopCurrent.toLocaleString()+' / '+troopMaximum.toLocaleString();
  (el('troop-cap-fill') as HTMLElement).style.width=(troopMaximum?Math.min(100,troopCurrent/troopMaximum*100):0)+'%';
  el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);
