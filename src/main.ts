@@ -138,10 +138,10 @@ function localBuild(index:number,type:BuildingType){
  tile.buildings=tile.buildings||[];const existing=tile.buildings.filter(b=>b.type===type);
  if(type==='port'&&!neighborsLocal(index).some(n=>game!.tiles[n]!.terrain==='water')){report('Ports must be built on a coastline.');return false;}
  if(type==='warship'&&!tile.buildings.some(b=>b.type==='port')){report('Build a Port on this tile before building Warships.');return false;}
- const max=type==='city'?4:type==='factory'?3:type==='sam_launcher'?2:type==='warship'?6:1;
- if(existing.length>=max){report('That building is already at its maximum here.');return false;}
- const cost=buildCosts[type]*(type==='city'&&existing.length?existing.length+1:1);if(me.gold<cost){report('You need '+cost+' gold for this build.');return false;}
- me.gold-=cost;if(type==='city'&&existing.length)existing[0]!.level=Math.min(4,existing[0]!.level+1);else tile.buildings.push({type,level:1});
+ const max=type==='city'?4:type==='factory'?3:type==='sam_launcher'?2:type==='warship'?6:1;const currentLevel=type==='city'?(existing[0]?.level||0):existing.length;
+ if(currentLevel>=max){report('That building is already at its maximum here.');return false;}
+ const cost=buildCosts[type]*(type==='city'?currentLevel+1:1);if(me.gold<cost){report('You need '+cost+' gold for this build.');return false;}
+ me.gold-=cost;if(type==='city'&&existing.length)existing[0]!.level=currentLevel+1;else tile.buildings.push({type,level:1});
  report(type.replace('_',' ').toUpperCase()+' constructed.');return true;
 }
 function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
@@ -174,7 +174,7 @@ function botTurn(bot:Player){
 function localTick(){if(!game||mode!=='single')return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){botTurn(bot);if(game.tick%3===0)botTurn(bot);}render();}
 function tileAt(event:MouseEvent|PointerEvent){if(!game)return-1;const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*game.width/r.width),y=Math.floor((event.clientY-r.top)*game.height/r.height);return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;}
 function draw(){
- const targetWidth=Math.max(1800,Math.round(window.innerWidth*2.1/settings.pixelScale)),targetHeight=Math.max(1200,Math.round(window.innerHeight*2.1/settings.pixelScale));
+ const targetWidth=Math.max(1800,Math.round(window.innerWidth*1.3/settings.pixelScale)),targetHeight=Math.max(1200,Math.round(window.innerHeight*1.3/settings.pixelScale));
  if(canvas.width!==targetWidth||canvas.height!==targetHeight){canvas.width=targetWidth;canvas.height=targetHeight;}
  const current=game;ctx.clearRect(0,0,canvas.width,canvas.height);if(!current){ctx.fillStyle='#152c31';ctx.fillRect(0,0,canvas.width,canvas.height);return;}
  const w=canvas.width/current.width,h=canvas.height/current.height;
