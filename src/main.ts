@@ -48,7 +48,7 @@ app.innerHTML = `
   <div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙</button><button id="main-menu" class="world-icon">MENU</button></div>
  </div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
- <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">CLICK YOUR LAND TO SELECT IT · CLICK ADJACENT LAND TO EXPAND</span><span id="score">SCORE 0</span></div>
+ <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">CLICK YOUR LAND TO SELECT IT · CLICK ADJACENT LAND TO EXPAND</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
  <div class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>TROOPS</small><b id="available-troops">0</b></div></div>
   <div class="dock-main">
