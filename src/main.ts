@@ -209,7 +209,24 @@ function botTurn(bot:Player){
  const tile=pick.t,defender=game.players.find(p=>p.id===tile.owner);source.troops-=send;const survivors=send-(tile.owner?tile.troops:0)-1;if(defender)defender.score=Math.max(0,defender.score-1);tile.owner=bot.id;tile.troops=Math.max(1,survivors);bot.score++;
  if(bot.gold>=25&&personality==='warden'&&game.tick%2===0)localRecruit(bot);
 }
-function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;botTurn(bot);if(soloDifficulty==='intense'||soloDifficulty==='impossible')botTurn(bot);if(soloDifficulty==='impossible'&&game.tick%2===0)botTurn(bot);}render();checkSoloWinner();}
+function botBuild(bot:Player){
+ if(!game)return;
+ const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
+ const choices:BuildingType[]=personality==='builder'?['factory','market','farm']:personality==='warden'?['defense_post','farm','market']:['farm','factory'];
+ const land=game.tiles.map((tile,index)=>({tile,index})).filter(v=>v.tile.owner===bot.id&&v.tile.terrain!=='mountain'&&v.tile.terrain!=='water');
+ for(const type of choices){
+  const cost=buildCosts[type];if(bot.gold<cost)continue;
+  const eligible=land.find(({tile,index})=>{
+   const count=(tile.buildings||[]).filter(b=>b.type===type).length;
+   if(type==='port'&&!neighborsLocal(index).some(n=>game!.tiles[n]!.terrain==='water'))return false;
+   return count<(type==='factory'||type==='market'||type==='farm'?3:1);
+  });
+  if(!eligible)continue;
+  eligible.tile.buildings=eligible.tile.buildings||[];
+  eligible.tile.buildings.push({type,level:1});bot.gold-=cost;return;
+ }
+}
+function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;botTurn(bot);if(soloDifficulty==='intense'||soloDifficulty==='impossible')botTurn(bot);if(soloDifficulty==='impossible'&&game.tick%2===0)botTurn(bot);if(game.tick%3===0)botBuild(bot);}render();checkSoloWinner();}
 function tileAt(event:MouseEvent|PointerEvent){if(!game)return-1;const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*game.width/r.width),y=Math.floor((event.clientY-r.top)*game.height/r.height);return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;}
 function draw(){
  const targetWidth=Math.max(1800,Math.round(window.innerWidth*1.3/settings.pixelScale)),targetHeight=Math.max(1200,Math.round(window.innerHeight*1.3/settings.pixelScale));
