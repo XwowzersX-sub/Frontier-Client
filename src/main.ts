@@ -92,14 +92,15 @@ function tileAt(event: MouseEvent) {
  return x >= 0 && x < game.width && y >= 0 && y < game.height ? y * game.width + x : -1;
 }
 function draw() {
+ const current=game;
  ctx.clearRect(0,0,canvas.width,canvas.height);
- if (!game) {
+ if (!current) {
   ctx.fillStyle='#15232c';ctx.fillRect(0,0,900,600);ctx.fillStyle='#93a3a4';ctx.font='18px monospace';ctx.textAlign='center';ctx.fillText('CONNECT TO ENTER THE FRONTIER',450,300);return;
  }
- const w=canvas.width/game.width,h=canvas.height/game.height;
- game.tiles.forEach((tile,i)=>{
-  const x=i%game.width*w,y=Math.floor(i/game.width)*h;
-  const owner=game!.players.find(p=>p.id===tile.owner);
+ const w=canvas.width/current.width,h=canvas.height/current.height;
+ current.tiles.forEach((tile,i)=>{
+  const x=i%current.width*w,y=Math.floor(i/current.width)*h;
+  const owner=current.players.find(p=>p.id===tile.owner);
   ctx.fillStyle=tile.terrain==='mountain'?'#59636a':owner?.color||'#334c3e';ctx.fillRect(x+1,y+1,w-2,h-2);
   if(tile.terrain==='forest'){ctx.fillStyle='#a6b879';ctx.fillRect(x+w*.43,y+h*.28,w*.14,h*.45);ctx.fillRect(x+w*.28,y+h*.48,w*.44,h*.25);}
   if(tile.terrain==='mountain'){ctx.fillStyle='#b3bdc0';ctx.beginPath();ctx.moveTo(x+w*.2,y+h*.78);ctx.lineTo(x+w*.5,y+h*.2);ctx.lineTo(x+w*.82,y+h*.78);ctx.fill();}
@@ -107,20 +108,21 @@ function draw() {
   if(i===selected){ctx.strokeStyle='#ffe18b';ctx.lineWidth=3;ctx.strokeRect(x+2,y+2,w-4,h-4);}
  });
  ctx.strokeStyle='rgba(8,14,18,.55)';ctx.lineWidth=1;
- for(let x=0;x<=game.width;x++){ctx.beginPath();ctx.moveTo(x*w,0);ctx.lineTo(x*w,600);ctx.stroke();}
- for(let y=0;y<=game.height;y++){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(900,y*h);ctx.stroke();}
+ for(let x=0;x<=current.width;x++){ctx.beginPath();ctx.moveTo(x*w,0);ctx.lineTo(x*w,600);ctx.stroke();}
+ for(let y=0;y<=current.height;y++){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(900,y*h);ctx.stroke();}
 }
 function updateStats(){
- const me=game?.players.find(p=>p.id===myId);
- const owned=game?.tiles.filter(t=>t.owner===myId).length||0;
+ const current=game;
+ const me=current?.players.find(p=>p.id===myId);
+ const owned=current?.tiles.filter(t=>t.owner===myId).length||0;
  el('gold').textContent=me?String(me.gold):'—';el('territory').textContent=me?String(owned):'—';el('score').textContent=me?String(me.score):'—';
- const target=game?.tiles[selected];
- const x=game && selected>=0 ? selected%game.width : -1, y=game && selected>=0 ? Math.floor(selected/game.width) : -1;
- const adjacentIndexes=game&&selected>=0?[x>0?selected-1:-1,x<game.width-1?selected+1:-1,y>0?selected-game.width:-1,y<game.height-1?selected+game.width:-1]:[];
- const adjacent=Boolean(game&&adjacentIndexes.some(i=>i>=0&&game!.tiles[i]!.owner===myId));
+ const target=current?.tiles[selected];
+ const x=current && selected>=0 ? selected%current.width : -1, y=current && selected>=0 ? Math.floor(selected/current.width) : -1;
+ const adjacentIndexes=current&&selected>=0?[x>0?selected-1:-1,x<current.width-1?selected+1:-1,y>0?selected-current.width:-1,y<current.height-1?selected+current.width:-1]:[];
+ const adjacent=Boolean(current&&adjacentIndexes.some(i=>i>=0&&current.tiles[i]!.owner===myId));
  (el('expand') as HTMLButtonElement).disabled=!me||!target||target.owner===myId||!adjacent||target.terrain==='mountain'||me.gold<(target.owner?8:4)||Boolean(target.owner&&target.troops>=4);
  (el('recruit') as HTMLButtonElement).disabled=!me||me.gold<25;
- if(target&&game){const owner=game.players.find(p=>p.id===target.owner);el('tile-info').textContent='TILE '+(selected%game.width+1)+' / '+(Math.floor(selected/game.width)+1)+' · '+(owner?.name||'NEUTRAL')+' · '+target.terrain.toUpperCase()+' · '+target.troops+' TROOPS';}else el('tile-info').textContent='SELECT A TILE TO INSPECT';
+ if(target&&current){const owner=current.players.find(p=>p.id===target.owner);el('tile-info').textContent='TILE '+(selected%current.width+1)+' / '+(Math.floor(selected/current.width)+1)+' · '+(owner?.name||'NEUTRAL')+' · '+target.terrain.toUpperCase()+' · '+target.troops+' TROOPS';}else el('tile-info').textContent='SELECT A TILE TO INSPECT';
 }
 function render(){
  if(!game)return;
