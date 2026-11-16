@@ -66,7 +66,7 @@ app.innerHTML = `
   </div>
   <div class="dock-report"><small>FIELD REPORT</small><p id="report">Choose a game mode to begin.</p><div id="selected-info">No territory selected</div></div>
  </div>
-</div>;
+</div>`;
 
 
 const el=(id:string)=>document.getElementById(id)!;
@@ -199,4 +199,4 @@ el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selected
 el('center-map').addEventListener('click',()=>{canvas.style.transform='translate(0,0) scale(1)';});
 window.addEventListener('keydown',event=>{if(event.key==='Escape'){activeBuilding=null;updateStats();draw();}if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement)return;const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','missile_silo','sam_launcher','warship'];if(key>=1&&key<=7){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}});
 window.addEventListener('resize',()=>draw());
-applySettings();showScreen('menu');getNickname();applySettings();showScreen('menu');getNickname();
+applySettings();showScreen('menu');getNickname();
