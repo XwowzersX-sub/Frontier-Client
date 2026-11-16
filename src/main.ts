@@ -354,7 +354,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>butto
 document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.addEventListener('click',()=>{activeBuilding=button.dataset.building as BuildingType;document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Build mode: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your territories.');updateStats();}));
 el('recruit').addEventListener('click',()=>{if(mode==='single'&&game){const p=game.players.find(v=>v.id===myId);if(p)localRecruit(p);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'recruit'}));});
 function sendQuickChat(message:string){
- const clean=message.replace(/[\\x00-\\x1f\\x7f]/g,' ').trim().slice(0,80);if(!clean)return;
+ const clean=Array.from(message,ch=>{const code=ch.charCodeAt(0);return code<32||code===127?' ':ch;}).join('').trim().slice(0,80);if(!clean)return;
  if(mode==='multi'&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'chat',text:clean}));
  else report(nickname+': '+clean);
 }
