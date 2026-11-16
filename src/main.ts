@@ -105,7 +105,7 @@ try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings'
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
 let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='random',soloBotCount=24,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=0,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false,soloSpawnPreference='center';
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
-let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null;
+let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null,hoverTile=-1;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
@@ -299,7 +299,7 @@ function restoreSoloSave(value:unknown):boolean{
  if(save.version!==1||!save.game||!Number.isInteger(save.game.width)||!Number.isInteger(save.game.height)||save.game.width<30||save.game.height<20||!Array.isArray(save.game.tiles)||save.game.tiles.length!==save.game.width*save.game.height||!Array.isArray(save.game.players)||!save.game.players.some(p=>p.id==='human'))return false;
  game={...save.game,tiles:save.game.tiles.map(t=>({...t,buildings:Array.isArray(t.buildings)?t.buildings:[]}))};
  soloMode=save.soloMode==='duos'||save.soloMode==='trios'||save.soloMode==='squads'?save.soloMode:'ffa';
- soloMap=save.soloMap||'continents';soloBotCount=Math.max(0,Math.min(7,Number(save.soloBotCount)||0));
+ soloMap=save.soloMap||'continents';soloBotCount=Math.max(0,Math.min(49,Number(save.soloBotCount)||0));
  soloDifficulty=save.soloDifficulty==='relaxed'||save.soloDifficulty==='intense'||save.soloDifficulty==='impossible'?save.soloDifficulty:'balanced';
  soloWinPercent=[60,70,80,90].includes(Number(save.soloWinPercent))?Number(save.soloWinPercent):80;
  soloLengthMinutes=[0,10,20,40].includes(Number(save.soloLengthMinutes))?Number(save.soloLengthMinutes):20;
@@ -436,7 +436,7 @@ function botBuild(bot:Player){
   eligible.tile.buildings.push({type,level:1});if(!soloInfiniteGold)bot.gold-=cost;return;
  }
 }
-function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=soloInfiniteGold?9999:Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(soloInfiniteTroops&&p.id==='human')for(const t of land)t.troops=9999;else if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const botPlayer of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;const actions=soloDifficulty==='impossible'?3:soloDifficulty==='intense'?2:1;for(let a=0;a<actions;a++)botTurn(botPlayer);if(game.tick%3===0)botBuild(botPlayer);}render();checkSoloWinner();}
+function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=(soloInfiniteGold&&p.id==='human')?9999:Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(soloInfiniteTroops&&p.id==='human')for(const t of land)t.troops=9999;else if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const botPlayer of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;const actions=soloDifficulty==='impossible'?3:soloDifficulty==='intense'?2:1;for(let a=0;a<actions;a++)botTurn(botPlayer);if(game.tick%3===0)botBuild(botPlayer);}render();checkSoloWinner();}
 function applyCamera(){canvas.style.transformOrigin='center center';canvas.style.transform='translate3d('+cameraX+'px,'+cameraY+'px,0) scale('+cameraZoom+')';}
 function resetCamera(){cameraZoom=1;cameraX=0;cameraY=0;applyCamera();}
 function zoomCamera(delta:number){cameraZoom=Math.max(1,Math.min(2.8,cameraZoom+delta));applyCamera();}
@@ -456,6 +456,14 @@ function draw(){
   if(tile.owner&&settings.counts){ctx.fillStyle='#071116bb';ctx.fillRect(x+w*.22,y+h*.72,w*.56,h*.2);ctx.fillStyle='#fff';ctx.font='bold '+Math.max(7,h*.15)+'px monospace';ctx.textAlign='center';ctx.fillText(String(tile.troops),x+w*.5,y+h*.87);}
   if(i===selectedSource){ctx.strokeStyle='#ffe49a';ctx.lineWidth=Math.max(3,w*.035);ctx.strokeRect(x+2,y+2,w-4,h-4);}
  });
+ if(selectedSource>=0&&hoverTile>=0&&current.tiles[selectedSource]?.owner===myId&&hoverTile!==selectedSource){
+  const sx=(selectedSource%current.width+.5)*w,sy=(Math.floor(selectedSource/current.width)+.5)*h;
+  const tx=(hoverTile%current.width+.5)*w,ty=(Math.floor(hoverTile/current.width)+.5)*h;
+  const distance=Math.hypot(sx-tx,sy-ty);
+  if(distance<=MAX_MARCH_DISTANCE*Math.max(w,h)){
+   ctx.save();ctx.strokeStyle='#82f4ffcc';ctx.lineWidth=Math.max(2,w*.22);ctx.setLineDash([Math.max(5,w*.65),Math.max(4,w*.45)]);ctx.shadowColor='#54eaff';ctx.shadowBlur=14;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(tx,ty);ctx.stroke();ctx.restore();
+  }
+ }
  if(settings.grid){ctx.strokeStyle='rgba(6,13,16,.25)';ctx.lineWidth=1;for(let x=0;x<=current.width;x++){ctx.beginPath();ctx.moveTo(x*w,0);ctx.lineTo(x*w,canvas.height);ctx.stroke();}for(let y=0;y<=current.height;y++){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(canvas.width,y*h);ctx.stroke();}}
 }
 function fieldRank(score:number){
@@ -486,7 +494,7 @@ function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp
 canvas.addEventListener('click',event=>{
  if(!game)return;const index=tileAt(event);if(index<0)return;const tile=game.tiles[index]!;
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
- if(tile.owner===myId){selectedSource=index;report('🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.');updateStats();draw();return;}
+ if(tile.owner===myId){selectedSource=index;hoverTile=-1;report('🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.');updateStats();draw();return;}
  const sourceIndex=selectedSource>=0&&game.tiles[selectedSource]?.owner===myId?selectedSource:-1;
  if(sourceIndex<0){report('🧭 Select one of your territories first, then choose a destination.');return;}
  const distance=Math.hypot(sourceIndex%game.width-index%game.width,Math.floor(sourceIndex/game.width)-Math.floor(index/game.width));
@@ -511,9 +519,9 @@ el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selected
 el('center-map').addEventListener('click',resetCamera);
 canvas.addEventListener('wheel',event=>{event.preventDefault();zoomCamera(event.deltaY<0?.12:-.12);},{passive:false});
 canvas.addEventListener('pointerdown',event=>{if(event.button!==1)return;event.preventDefault();cameraDragging=true;cameraPointer=event.pointerId;cameraStart={x:event.clientX,y:event.clientY,cx:cameraX,cy:cameraY};canvas.setPointerCapture(event.pointerId);});
-canvas.addEventListener('pointermove',event=>{if(!cameraDragging||!cameraStart||event.pointerId!==cameraPointer)return;cameraX=cameraStart.cx+event.clientX-cameraStart.x;cameraY=cameraStart.cy+event.clientY-cameraStart.y;applyCamera();});
+canvas.addEventListener('pointermove',event=>{if(cameraDragging&&cameraStart&&event.pointerId===cameraPointer){cameraX=cameraStart.cx+event.clientX-cameraStart.x;cameraY=cameraStart.cy+event.clientY-cameraStart.y;applyCamera();return;}if(selectedSource>=0){const next=tileAt(event);if(next!==hoverTile){hoverTile=next;draw();}}});
 canvas.addEventListener('pointerup',event=>{if(event.pointerId===cameraPointer){cameraDragging=false;cameraStart=null;}});
-canvas.addEventListener('pointercancel',()=>{cameraDragging=false;cameraStart=null;});
+canvas.addEventListener('pointercancel',()=>{cameraDragging=false;cameraStart=null;});canvas.addEventListener('pointerleave',()=>{hoverTile=-1;if(selectedSource>=0)draw();});
 canvas.addEventListener('contextmenu',event=>{event.preventDefault();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');});
 window.addEventListener('keydown',event=>{
  if(event.key==='Escape'){activeBuilding=null;updateStats();draw();return;}
