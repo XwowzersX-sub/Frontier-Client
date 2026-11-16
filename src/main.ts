@@ -22,7 +22,7 @@ app.innerHTML = `
   <div class="section-title">YOUR EMPIRE</div>
   <div class="stats"><div><small>GOLD</small><b id="gold">—</b></div><div><small>TERRITORY</small><b id="territory">—</b></div><div><small>SCORE</small><b id="score">—</b></div></div>
   <div class="section-title">ORDERS</div><button id="expand" class="primary" disabled>EXPAND SELECTED TILE <span>−4g</span></button><button id="recruit" class="secondary" disabled>RECRUIT 5 TROOPS <span>−25g</span></button>
-  <p class="hint">Select a neighboring neutral tile, then expand. Mountains cannot be occupied. Enemy tiles with 4+ defenders are protected.</p>
+  <p class="hint">Select a neighboring neutral tile, then expand. Mountains cannot be occupied. Captures require more nearby troops than the defending garrison.</p>
   <div class="section-title">FIELD REPORT</div><div id="report" class="report">Connect to the server to enter the match.</div>
  </aside>
  <section class="battlefield">
@@ -120,7 +120,9 @@ function updateStats(){
  const x=current && selected>=0 ? selected%current.width : -1, y=current && selected>=0 ? Math.floor(selected/current.width) : -1;
  const adjacentIndexes=current&&selected>=0?[x>0?selected-1:-1,x<current.width-1?selected+1:-1,y>0?selected-current.width:-1,y<current.height-1?selected+current.width:-1]:[];
  const adjacent=Boolean(current&&adjacentIndexes.some(i=>i>=0&&current.tiles[i]!.owner===myId));
- (el('expand') as HTMLButtonElement).disabled=!me||!target||target.owner===myId||!adjacent||target.terrain==='mountain'||me.gold<(target.owner?8:4)||Boolean(target.owner&&target.troops>=4);
+ const attackForce=current&&selected>=0?adjacentIndexes.reduce((sum,i)=>i>=0&&current.tiles[i]!.owner===myId?sum+current.tiles[i]!.troops:sum,0):0;
+ (el('expand') as HTMLButtonElement).disabled=!me||!target||target.owner===myId||!adjacent||target.terrain==='mountain'||me.gold<(target.owner?8:4)||Boolean(target.owner&&attackForce<=target.troops);
+ const costLabel=el('expand').querySelector('span');if(costLabel)costLabel.textContent=target?.owner?'−8g':'−4g';
  (el('recruit') as HTMLButtonElement).disabled=!me||me.gold<25;
  if(target&&current){const owner=current.players.find(p=>p.id===target.owner);el('tile-info').textContent='TILE '+(selected%current.width+1)+' / '+(Math.floor(selected/current.width)+1)+' · '+(owner?.name||'NEUTRAL')+' · '+target.terrain.toUpperCase()+' · '+target.troops+' TROOPS';}else el('tile-info').textContent='SELECT A TILE TO INSPECT';
 }
