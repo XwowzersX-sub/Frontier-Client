@@ -153,12 +153,12 @@ function localWeaponBuy(index:number,weapon:WeaponType){
  me.gold-=price[weapon];me.arsenal=me.arsenal||{atom:0,hydrogen:0,mirv:0};me.arsenal[weapon]++;report(weapon.toUpperCase()+' armed.');return true;
 }
 function localWeaponLaunch(index:number,weapon:WeaponType){
- if(!game)return false;const me=game.players.find(p=>p.id===myId),arsenal=me?.arsenal||(me&&(me.arsenal={atom:0,hydrogen:0,mirv:0}));const target=game.tiles[index];
+ if(!game)return false;const current=game;const me=current.players.find(p=>p.id===myId),arsenal=me?.arsenal||(me&&(me.arsenal={atom:0,hydrogen:0,mirv:0}));const target=current.tiles[index];
  if(!me||!arsenal||arsenal[weapon]<1||!target||target.terrain==='water'||target.owner===myId){report('Choose an enemy or neutral land target.');return false;}
- const x=index%game.width,y=Math.floor(index/game.width),intercepted=game.tiles.some((t,i)=>t.owner&&t.owner!==myId&&(t.buildings||[]).some(b=>b.type==='sam_launcher')&&Math.abs(i%game.width-x)+Math.abs(Math.floor(i/game.width)-y)<=4);
+ const x=index%current.width,y=Math.floor(index/current.width),intercepted=current.tiles.some((t,i)=>t.owner&&t.owner!==myId&&(t.buildings||[]).some(b=>b.type==='sam_launcher')&&Math.abs(i%current.width-x)+Math.abs(Math.floor(i/current.width)-y)<=4);
  arsenal[weapon]--;if(intercepted){report('Strike intercepted by an enemy SAM launcher.');return true;}
  const radius:Record<WeaponType,number>={atom:0,hydrogen:1,mirv:2};let affected=0;
- game.tiles.forEach((t,i)=>{const d=Math.abs(i%game.width-x)+Math.abs(Math.floor(i/game.width)-y);if(d<=radius[weapon]&&t.owner&&t.owner!==myId&&t.terrain!=='water'){const defender=game!.players.find(p=>p.id===t.owner);if(defender)defender.score=Math.max(0,defender.score-1);t.owner=null;t.troops=0;t.buildings=[];affected++;}});
+ current.tiles.forEach((t,i)=>{const d=Math.abs(i%current.width-x)+Math.abs(Math.floor(i/current.width)-y);if(d<=radius[weapon]&&t.owner&&t.owner!==myId&&t.terrain!=='water'){const defender=current.players.find(p=>p.id===t.owner);if(defender)defender.score=Math.max(0,defender.score-1);t.owner=null;t.troops=0;t.buildings=[];affected++;}});
  report(weapon.toUpperCase()+' strike cleared '+affected+' enemy territories.');return true;
 }
 function botTurn(bot:Player){
