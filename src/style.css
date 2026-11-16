@@ -99,3 +99,84 @@ body{background:#091219;color:#e8eee9}
 .sandbox-grid label{display:flex;flex-direction:row;align-items:center;gap:7px;color:#c7d4cb;font:8px 'DM Mono';letter-spacing:.4px}
 .sandbox-grid input{accent-color:#e8c76e;width:14px;height:14px}
 @media(max-width:600px){.sandbox-settings{padding:9px}.sandbox-grid{gap:7px}.sandbox-grid label{font-size:7px}}
+
+
+/* PIXEL FRONTIER // NEON GLASS REDESIGN */
+:root{color-scheme:dark}
+body{background:#050c18;color:#eaf7ff}
+button,input,select{font-family:'DM Mono',monospace}
+button{transition:background .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #68e5ff;outline-offset:2px}
+.menu-screen{background:radial-gradient(ellipse at 50% 22%,#163c54 0%,#0b1b2e 42%,#050914 100%)}
+.menu-screen:before{background-image:linear-gradient(#7ce8ff0a 1px,transparent 1px),linear-gradient(90deg,#7ce8ff0a 1px,transparent 1px);background-size:34px 34px;mask-image:radial-gradient(ellipse at center,#000 8%,transparent 78%)}
+.menu-brand{color:#74eaff;text-shadow:0 0 12px #36d8ff88,0 0 42px #36d8ff66;letter-spacing:6px}
+.menu-brand span{color:#f0fbff}
+.menu-brand small{color:#83aebd;letter-spacing:3px}
+.menu-card,.settings-card{background:linear-gradient(145deg,#10283bdc,#0a1627d9);border:1px solid #75dfff55;border-radius:22px;box-shadow:0 24px 90px #000b,0 0 34px #22cfff16,inset 0 1px #ffffff20;backdrop-filter:blur(22px)}
+.menu-card h1 em{color:#74eaff;text-shadow:0 0 22px #4ae2ff77}
+.menu-card>input,.account-details input,.chat-entry input,.setup-grid select,.setting-row select{background:#061321c9;border:1px solid #48758a99;border-radius:10px;color:#effaff}
+.menu-card input:focus,.chat-entry input:focus,.setup-grid select:focus{border-color:#68e5ff;box-shadow:0 0 0 3px #43dfff19,0 0 18px #22cfff2a}
+.primary{background:linear-gradient(120deg,#49dff5,#9bfbff);border:1px solid #b0faff;color:#061622;border-radius:12px;box-shadow:0 0 22px #36d9ff30}
+.primary:hover{background:#b4faff;box-shadow:0 0 28px #36d9ff77;transform:translateY(-1px)}
+.secondary{background:#16354bd9;border:1px solid #5a9bb4;border-radius:12px;color:#def8ff}
+.secondary:hover{background:#205573;border-color:#75eaff;box-shadow:0 0 18px #35d7ff38}
+.big{border-radius:14px;padding:18px 17px}
+.big small{color:#b6e6f3}
+.text-button{color:#8bd8eb}
+.match-setup,.sandbox-settings,.account-details{background:#081828a8;border:1px solid #4d849666;border-radius:14px}
+.match-setup summary,.sandbox-settings summary,.account-details summary{color:#83eaff}
+.setup-grid label,.sandbox-grid label,.field-label{color:#a8c6d5}
+.setup-grid select{border-radius:9px}
+.game-screen{background:radial-gradient(ellipse at 48% 30%,#123a50 0%,#071524 66%,#030811 100%)}
+#map{image-rendering:pixelated;filter:saturate(1.08) contrast(1.04)}
+.world-topbar{background:#071321b9;border:1px solid #69dcff4d;border-radius:18px;box-shadow:0 10px 40px #0008,0 0 30px #18caff15;backdrop-filter:blur(18px)}
+.world-brand b{color:#80edff;text-shadow:0 0 15px #37dfff6e}
+.world-brand span{color:#8cf8c0}
+.world-metrics{color:#a8c8d9}
+.world-metrics b{color:#d7f8ff;text-shadow:0 0 12px #42dfff36}
+.world-icon{background:#0d2940bb;border:1px solid #4e92ac99;border-radius:10px;color:#defaff}
+.world-icon:hover{background:#154462;border-color:#73eaff;box-shadow:0 0 18px #3bdfff45}
+.map-inspector{background:#071522b9;border:1px solid #64cce855;border-left:3px solid #6deaff;border-radius:13px;box-shadow:0 8px 28px #0008,0 0 22px #18caff14;backdrop-filter:blur(15px)}
+.map-inspector b{color:#8ceeff;text-shadow:0 0 14px #53dfff45}
+.map-inspector span{color:#b3d8e7}
+.camera-help{color:#78cbdc}
+.floating-dock{background:#061424c7;border:1px solid #5fbbd655;border-radius:21px;box-shadow:0 18px 60px #000b,0 0 35px #20cfff18;backdrop-filter:blur(20px)}
+.dock-profile,.dock-main,.dock-report{background:#0c2034bb;border:1px solid #4387a055;border-radius:15px}
+.dock-profile>i{box-shadow:0 0 18px currentColor;border-radius:5px}
+.dock-profile small,.dock-report>small{color:#8fb9cb}
+.dock-profile b{color:#dffaff}
+.dock-gold{border-color:#32627a}
+.dock-gold b{color:#7ef0ff}
+.dock-tabs{border-color:#36708b}
+.dock-tab{border:1px solid #38718b;border-radius:9px;color:#a7d5e5}
+.dock-tab.active{background:linear-gradient(120deg,#45dff4,#a4faff);border-color:#a8faff;color:#06202c;box-shadow:0 0 20px #35dfff52}
+.dock-panel{color:#d9f4fa}
+.ratio-control>small{color:#a8cbd8}
+.troop-choices button,.dock-action{background:#102e46;border:1px solid #477f99;border-radius:10px;color:#e4f9ff}
+.troop-choices button:hover,.dock-action:hover{background:#174768;border-color:#6feaff;box-shadow:0 0 17px #35dfff30}
+.troop-choices button.chosen{background:linear-gradient(120deg,#58def0,#a0f6fa);border-color:#b8fcff;color:#061c27;box-shadow:0 0 20px #44e3ff60}
+.dock-action small{color:#7feaff}
+.build-grid button{background:#102d43;border:1px solid #477e97;border-radius:10px;color:#e9f9ff}
+.build-grid button:hover,.build-grid button.build-selected{background:#53dfef;color:#071d28;border-color:#c0fbff;box-shadow:0 0 20px #4be7ff62}
+.build-grid button small{color:#86ecff}
+.build-grid button:hover small,.build-grid button.build-selected small{color:#082431}
+.dock-hint{color:#a5cad6}
+.dock-report p{color:#e3f6fa}
+.dock-report #selected-info{border-color:#386e83;color:#83eaff}
+.quick-chat button,.chat-quick-buttons button{background:#10314b;border:1px solid #477f99;border-radius:9px;color:#e7faff}
+.quick-chat button:hover,.chat-quick-buttons button:hover{border-color:#7aeaff;box-shadow:0 0 15px #38dfff40}
+.save-actions .dock-action{background:#0f3048}
+.match-banner{background:#07182be8;border:1px solid #81eaff;border-radius:22px;box-shadow:0 22px 90px #000d,0 0 35px #38dfff3b;backdrop-filter:blur(20px)}
+.match-banner b{color:#81efff;text-shadow:0 0 26px #42dfff77}
+.modal-screen{background:#020712c9;backdrop-filter:blur(12px)}
+.settings-card{border-color:#64dfff70;border-radius:20px}
+.setting-row{border-color:#315d75;color:#c7e9f5}
+.match-setup summary:after,.sandbox-settings summary:after{color:#75eaff}
+.menu-version{color:#7da9bb}
+@media(max-width:600px){
+ .menu-card{padding:18px;border-radius:17px}
+ .world-topbar{border-radius:13px}
+ .floating-dock{border-radius:16px}
+ .dock-main,.dock-report{border-radius:12px}
+ .map-inspector{border-radius:10px}
+}
