@@ -88,3 +88,14 @@ body{background:#091219;color:#e8eee9}
 .chat-entry input{min-width:0;flex:1;background:#0c171e;border:1px solid #50645f;color:#f3ead0;padding:8px;font:8px 'DM Mono'}
 .chat-entry .dock-action{flex:0 0 65px;min-width:65px;padding:8px}
 @media(max-width:600px){.quick-chat{width:100%;min-width:100%}.chat-quick-buttons{justify-content:center}.chat-entry input{font-size:8px}}
+
+
+.sandbox-settings{margin-top:9px;padding:11px 13px;background:#101d23;border:1px solid #3b5256;color:#e6ece3}
+.sandbox-settings summary{cursor:pointer;list-style:none;color:#9eb5a7;font:700 8px 'DM Mono';letter-spacing:1.3px}
+.sandbox-settings summary::-webkit-details-marker{display:none}
+.sandbox-settings summary:after{content:'＋';float:right;color:#839a90}
+.sandbox-settings[open] summary:after{content:'−'}
+.sandbox-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+.sandbox-grid label{display:flex;flex-direction:row;align-items:center;gap:7px;color:#c7d4cb;font:8px 'DM Mono';letter-spacing:.4px}
+.sandbox-grid input{accent-color:#e8c76e;width:14px;height:14px}
+@media(max-width:600px){.sandbox-settings{padding:9px}.sandbox-grid{gap:7px}.sandbox-grid label{font-size:7px}}
