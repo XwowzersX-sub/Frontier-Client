@@ -28,6 +28,7 @@ app.innerHTML = `
     <label>AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label>
     <label>AI DIFFICULTY <select id="solo-difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
     <label>LAND WIN TARGET <select id="solo-win"><option value="60">60%</option><option value="70">70%</option><option value="80" selected>80%</option><option value="90">90%</option></select></label>
+    <label>MATCH LENGTH <select id="solo-length"><option value="0">Unlimited</option><option value="10">10 Minutes</option><option value="20" selected>20 Minutes</option><option value="40">40 Minutes</option></select></label>
    </div>
   </details>
   <details class="account-details"><summary>ACCOUNT / SIGN IN</summary><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your account identity.</p></details>
@@ -45,7 +46,7 @@ app.innerHTML = `
  <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas>
  <div class="world-topbar">
   <div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div>
-  <div class="world-metrics"><span>COMMANDER <b id="commander-label">COMMANDER</b></span><span>GOLD <b id="gold">0</b></span><span>LAND <b id="territory">0</b></span><span>TURN <b id="turn">0</b></span><span>ONLINE <b id="online">0</b></span></div>
+  <div class="world-metrics"><span>COMMANDER <b id="commander-label">COMMANDER</b></span><span>GOLD <b id="gold">0</b></span><span>LAND <b id="territory">0</b></span><span>TURN <b id="turn">0</b></span><span>TIME <b id="time-left">∞</b></span><span>ONLINE <b id="online">0</b></span></div>
   <div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙</button><button id="main-menu" class="world-icon">MENU</button></div>
  </div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
@@ -88,7 +89,7 @@ let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
-let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloSpeed=1,soloPaused=false,matchWinner:string|null=null;
+let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=20,soloSpeed=1,soloPaused=false,matchWinner:string|null=null;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
@@ -130,6 +131,7 @@ function startSinglePlayer(){
  if(soloBotCount<teamMinimum){soloBotCount=teamMinimum;(el('solo-bots') as HTMLSelectElement).value=String(teamMinimum);}
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
  soloWinPercent=Number((el('solo-win') as HTMLSelectElement).value);
+ soloLengthMinutes=Number((el('solo-length') as HTMLSelectElement).value);
  const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f','#57b78a','#d77eb0','#78aeb5','#c18b62'];
  const commanders=[nickname,'Astra','Vex','Orion','Nova','Mako','Sable','Atlas'];
  const starts=[305,354,2045,2094,330,2070,1205,1254];
@@ -174,14 +176,17 @@ function checkSoloWinner(){
   if(p.id==='human'){current.name=p.name;current.id=p.id;}
   groups.set(team,current);
  }
- const winningEntry=[...groups.entries()].find(([,group])=>group.land/playable>=soloWinPercent/100);
+ let winningEntry=[...groups.entries()].find(([,group])=>group.land/playable>=soloWinPercent/100);
+ const timeExpired=soloLengthMinutes>0&&game.tick>=soloLengthMinutes*15;
+ if(!winningEntry&&timeExpired)winningEntry=[...groups.entries()].sort((a,b)=>b[1].land-a[1].land)[0];
  if(!winningEntry)return;
  const [winningTeam,winner]=winningEntry;
  const human=game.players.find(p=>p.id==='human');
  const isPlayerTeam=soloMode==='ffa'?winner.id==='human':(human?.team??0)===winningTeam;
  matchWinner=winner.name;soloPaused=true;if(localTimer)clearInterval(localTimer);
  el('match-result').textContent=isPlayerTeam?'VICTORY':'DEFEAT';
- el('match-result-detail').textContent=(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+' reached '+soloWinPercent+'% of playable land.';
+ const landPercent=Math.round(winner.land/playable*100);
+ el('match-result-detail').textContent=timeExpired?'Time expired · '+landPercent+'% of playable land.':(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+' reached '+soloWinPercent+'% land.';
  el('match-banner').classList.remove('hidden');
  report(winner.name+(soloMode==='ffa'?'':' and their allies')+' won the campaign. Start a new match to play again.');
 }
@@ -279,6 +284,7 @@ function updateStats(){
  el('tile-info').textContent=activeBuilding?'BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'CLICK ADJACENT LAND TO EXPAND · SELECTED '+(selectedSource>=0?'TILE '+selectedSource:'NONE');
  el('tile-title').textContent=activeBuilding?'CONSTRUCTION MODE':'WORLD MAP';
  el('turn').textContent=String(current?.tick||0);
+ if(mode==='single'&&soloLengthMinutes>0&&current){const remaining=Math.max(0,soloLengthMinutes*15-current.tick)*4;el('time-left').textContent=Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');}else el('time-left').textContent='∞';
   const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Markets add income; Farms boost troop growth.';
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
 }
