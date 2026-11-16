@@ -579,7 +579,7 @@ function advanceLocalShips(){
     if(tile.owner===null&&tile.terrain!=='water'&&tile.terrain!=='mountain'){tile.owner=ship.owner;tile.troops=1;game.tiles[ship.to??pos]=tile;const owner=game.players.find(p=>p.id===ship.owner);if(owner)owner.score++;if(ship.owner==='human')report('🏝 New island settlement established!');}
    }else if(ship.kind==='trade'){
     const from=game.players.find(p=>p.id===ship.owner),to=ship.destinationOwner?game.players.find(p=>p.id===ship.destinationOwner):from;
-    if(from)from.gold+=40;if(to&&to.id!==from?.id)to.gold+=40;
+    const payout=Math.min(250,Math.max(20,Math.floor(ship.path.length*.3)));if(from)from.gold+=payout;if(to&&to.id!==from?.id)to.gold+=payout;
    }
    fleet.splice(i,1);
   }
