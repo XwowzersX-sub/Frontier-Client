@@ -465,9 +465,11 @@ function localBuild(index:number,type:BuildingType){
 }
 function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
 function localRecruit(player:Player){if(!game||(!soloInfiniteGold&&player.gold<25))return;const home=game.tiles[player.home]||getGameTile(player.home);game.tiles[player.home]=home;if(home?.owner===player.id){if(!soloInfiniteGold)player.gold-=25;home.troops+=15;}}
-function botTurn(bot:Player){
+function botTurn(bot:Player,ownedInput?:number[]){
  if(!game)return false;
- const owned:number[]=[];for(let i=0;i<game.tiles.length;i++)if(game.tiles[i]!.owner===bot.id&&game.tiles[i]!.troops>=8)owned.push(i);
+ const owned=ownedInput||[];
+ if(!ownedInput)game.tiles.forEach((tile,i)=>{if(tile&&tile.owner===bot.id&&tile.troops>=8)owned.push(i);});
+
  if(!owned.length)return false;
  const directions:[number,number][]=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
  const stride=Math.max(1,Math.floor(owned.length/90)),candidates:{source:number;target:number;score:number}[]=[];
@@ -476,7 +478,7 @@ function botTurn(bot:Player){
   for(const [dx,dy] of directions){
    for(const distance of [5,9,13,MAX_MARCH_DISTANCE]){
     const x=sx+dx*distance,y=sy+dy*distance;if(x<0||y<0||x>=game.width||y>=game.height)continue;
-    const target=y*game.width+x;if(game.tiles[target]!.owner===bot.id)continue;
+    const target=y*game.width+x,targetTile=getGameTile(target);if(targetTile.owner===bot.id)continue;
     const route=marchPath(source,target);let reachable=0,score=0;
     for(const step of route){
      const tile=game.tiles[step]!;
@@ -500,21 +502,23 @@ function botTurn(bot:Player){
  if(captured&&bot.gold>=25&&game.tick%2===0)localRecruit(bot);
  return captured>0;
 }
-function botBuild(bot:Player){
+function botBuild(bot:Player,ownedInput?:number[]){
  if(!game)return;
  const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
  const choices:BuildingType[]=personality==='builder'?['factory','market','farm']:personality==='warden'?['defense_post','farm','market']:['farm','factory'];
- const land=game.tiles.map((tile,index)=>({tile,index})).filter(v=>v.tile.owner===bot.id&&v.tile.terrain!=='mountain'&&v.tile.terrain!=='water');
+ const land:{tile:Tile;index:number}[]=[];
+ if(ownedInput){for(const index of ownedInput){const tile=getGameTile(index);if(tile.owner===bot.id)land.push({tile,index});}}
+ else game.tiles.forEach((tile,index)=>{if(tile&&tile.owner===bot.id&&tile.terrain!=='mountain'&&tile.terrain!=='water')land.push({tile,index});});
  for(const type of choices){
   const cost=buildCosts[type];if(bot.gold<cost)continue;
   const eligible=land.find(({tile,index})=>{
    const count=(tile.buildings||[]).filter(b=>b.type===type).length;
-   if(type==='port'&&!neighborsLocal(index).some(n=>game!.tiles[n]!.terrain==='water'))return false;
+   if(type==='port'&&!neighborsLocal(index).some(n=>getGameTile(n).terrain==='water'))return false;
    return count<(type==='factory'||type==='market'||type==='farm'?3:1);
   });
   if(!eligible)continue;
-  eligible.tile.buildings=eligible.tile.buildings||[];
-  eligible.tile.buildings.push({type,level:1});if(!soloInfiniteGold)bot.gold-=cost;return;
+  eligible.tile.buildings=eligible.tile.buildings||[];eligible.tile.buildings.push({type,level:1});game.tiles[eligible.index]=eligible.tile;
+  if(!soloInfiniteGold)bot.gold-=cost;return;
  }
 }
 function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=(soloInfiniteGold&&p.id==='human')?9999:Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(soloInfiniteTroops&&p.id==='human')for(const t of land)t.troops=9999;else if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const botPlayer of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;const actions=soloDifficulty==='impossible'?3:soloDifficulty==='intense'?2:1;for(let a=0;a<actions;a++)botTurn(botPlayer);if(game.tick%3===0)botBuild(botPlayer);}render();checkSoloWinner();}
