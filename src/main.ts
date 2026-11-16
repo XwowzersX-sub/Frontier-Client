@@ -113,10 +113,32 @@ function localClaim(player:Player,target:number){
 }
 function localRecruit(player:Player){if(!game||player.gold<25)return;const home=game.tiles[player.home];if(home?.owner===player.id){player.gold-=25;home.troops+=5;}}
 function botTurn(bot:Player){
- if(!game)return;const owned=game.tiles.map((t,i)=>t.owner===bot.id?i:-1).filter(i=>i>=0);if(!owned.length)return;
- const options=owned.flatMap(i=>neighborsLocal(i).filter(n=>game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain').map(n=>({to:n,t:game!.tiles[n]!})));
- const ranked=options.map(o=>{const friendly=neighborsLocal(o.to).filter(n=>game!.tiles[n]!.owner===bot.id);const force=friendly.reduce((v,n)=>v+game!.tiles[n]!.troops,0);const canTake=!o.t.owner||force>o.t.troops;const score=(o.t.owner?12:0)+neighborsLocal(o.to).filter(n=>game!.tiles[n]!.owner!==bot.id).length*2+o.t.troops*.2+(o.t.terrain==='forest'?1:0);return {...o,canTake,score};}).filter(o=>o.canTake).sort((a,b)=>b.score-a.score);
- if(bot.gold>=25&&owned.length>1&&Math.random()<.45)localRecruit(bot);if(ranked.length)localClaim(bot,ranked[0]!.to);if(bot.gold>=25&&Math.random()<.2)localRecruit(bot);
+ if(!game)return;
+ const owned=game.tiles.map((t,i)=>t.owner===bot.id?i:-1).filter(i=>i>=0);
+ if(!owned.length)return;
+ const rivals=game.players.filter(p=>p.id!==bot.id);
+ const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
+ const frontier=owned.filter(i=>neighborsLocal(i).some(n=>game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain'));
+ const options=frontier.flatMap(i=>neighborsLocal(i).filter(n=>game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain').map(n=>({to:n,t:game!.tiles[n]!})));
+ const ranked=options.map(o=>{
+  const adjacent=neighborsLocal(o.to),friendly=adjacent.filter(n=>game!.tiles[n]!.owner===bot.id);
+  const force=friendly.reduce((v,n)=>v+game!.tiles[n]!.troops,0);
+  const enemy=game!.players.find(p=>p.id===o.t.owner);
+  const canTake=!o.t.owner||force>o.t.troops;
+  const neutralValue=o.t.owner?0:8,enemyValue=o.t.owner?14+(enemy?.score||0)*.08:0;
+  const expansionValue=adjacent.filter(n=>game!.tiles[n]!.owner!==bot.id).length*2;
+  const forestValue=o.t.terrain==='forest'?1.5:0;
+  const defenseRisk=o.t.owner?o.t.troops*.45:0;
+  const personalityBonus=personality==='builder'?(o.t.owner?0:6):personality==='raider'?(o.t.owner?12:0):(friendly.length===1?3:0);
+  return {...o,canTake,score:neutralValue+enemyValue+expansionValue+forestValue+personalityBonus-defenseRisk};
+ }).filter(o=>o.canTake).sort((a,b)=>b.score-a.score);
+ const threatened=frontier.some(i=>neighborsLocal(i).some(n=>{const t=game!.tiles[n]!;return Boolean(t.owner&&t.owner!==bot.id&&t.troops>=game!.tiles[i]!.troops);}));
+ const home=game.tiles[bot.home];
+ const shouldRecruit=bot.gold>=25&&home?.owner===bot.id&&(threatened||bot.gold>=55||ranked.length===0||personality==='warden'&&game.tick%2===0);
+ if(shouldRecruit)localRecruit(bot);
+ const target=ranked[0];
+ if(target&&bot.gold>=(target.t.owner?8:4))localClaim(bot,target.to);
+ if(!target&&bot.gold>=25)localRecruit(bot);
 }
 function localTick(){
  if(!game||mode!=='single')return;game.tick++;
