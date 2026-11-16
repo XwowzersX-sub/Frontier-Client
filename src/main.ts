@@ -391,7 +391,7 @@ function areAllies(attackerId:string,ownerId:string|null){
 }
 function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,percent:number){
  if(!game)return 0;
- const source=game.tiles[sourceIndex],target=game.tiles[targetIndex],attacker=game.players.find(p=>p.id===attackerId);
+ const source=game.tiles[sourceIndex]||getGameTile(sourceIndex),target=game.tiles[targetIndex]||getGameTile(targetIndex),attacker=game.players.find(p=>p.id===attackerId);game.tiles[sourceIndex]=source;game.tiles[targetIndex]=target;
  if(!source||!target||!attacker||source.owner!==attackerId||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
  const sx=sourceIndex%game.width,sy=Math.floor(sourceIndex/game.width),tx=targetIndex%game.width,ty=Math.floor(targetIndex/game.width);
  const dx=tx-sx,dy=ty-sy,distance=Math.hypot(dx,dy);
@@ -415,7 +415,7 @@ function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,perc
   const wx=wave.index%game.width,wy=Math.floor(wave.index/game.width);
   const candidates=getNeighbors(wave.index).filter(next=>{
    if(visited.has(next))return false;
-   const tile=game!.tiles[next]!;
+   const tile=getGameTile(next);game!.tiles[next]=tile;
    if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner===attackerId||areAllies(attackerId,tile.owner))return false;
    const nx=next%game!.width,ny=Math.floor(next/game!.width),rx=nx-sx,ry=ny-sy,radial=Math.hypot(rx,ry);
    if(radial>maxRadius||radial<.1)return false;
@@ -454,9 +454,9 @@ function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,perc
 function localClaim(sourceIndex:number,targetIndex:number,percent:number){return localMarch('human',sourceIndex,targetIndex,percent)>0;}
 const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80};
 function localBuild(index:number,type:BuildingType){
- if(!game)return false;const tile=game.tiles[index],me=game.players.find(p=>p.id===myId);if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
+ if(!game)return false;const tile=game.tiles[index]||getGameTile(index),me=game.players.find(p=>p.id===myId);game.tiles[index]=tile;if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
  tile.buildings=tile.buildings||[];const existing=tile.buildings.filter(b=>b.type===type);
- if(type==='port'&&!neighborsLocal(index).some(n=>game!.tiles[n]!.terrain==='water')){report('Ports must be built on a coastline.');return false;}
+ if(type==='port'&&!neighborsLocal(index).some(n=>getGameTile(n).terrain==='water')){report('Ports must be built on a coastline.');return false;}
  const max=type==='city'?4:type==='factory'?3:(type==='market'||type==='farm')?3:1;const currentLevel=type==='city'?(existing[0]?.level||0):existing.length;
  if(currentLevel>=max){report('That building is already at its maximum here.');return false;}
  const cost=buildCosts[type]*(type==='city'?currentLevel+1:1);if(!soloInfiniteGold&&me.gold<cost){report('You need '+cost+' gold for this build.');return false;}
@@ -464,7 +464,7 @@ function localBuild(index:number,type:BuildingType){
  report(type.replace('_',' ').toUpperCase()+' constructed.');return true;
 }
 function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
-function localRecruit(player:Player){if(!game||(!soloInfiniteGold&&player.gold<25))return;const home=game.tiles[player.home];if(home?.owner===player.id){if(!soloInfiniteGold)player.gold-=25;home.troops+=15;}}
+function localRecruit(player:Player){if(!game||(!soloInfiniteGold&&player.gold<25))return;const home=game.tiles[player.home]||getGameTile(player.home);game.tiles[player.home]=home;if(home?.owner===player.id){if(!soloInfiniteGold)player.gold-=25;home.troops+=15;}}
 function botTurn(bot:Player){
  if(!game)return false;
  const owned:number[]=[];for(let i=0;i<game.tiles.length;i++)if(game.tiles[i]!.owner===bot.id&&game.tiles[i]!.troops>=8)owned.push(i);
