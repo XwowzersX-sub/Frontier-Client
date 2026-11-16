@@ -55,6 +55,7 @@ const report=(value:string)=>{el('report').textContent=value;};
 const setConnection=(value:string,good=false)=>{el('connection').textContent='● '+value;el('connection').className='connection '+(good?'good':'');};
 type Settings={pixelScale:number;grid:boolean;sound:boolean;counts:boolean};
 let settings:Settings={pixelScale:2,grid:true,sound:false,counts:true};
+let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}
 let forcePercent=50,selectedSource=-1,route:number[]=[],dragging=false,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
@@ -71,9 +72,9 @@ el('signup').addEventListener('click',async()=>{const email=(el('email') as HTML
 el('resend').addEventListener('click',async()=>{const email=(el('email') as HTMLInputElement).value;if(!email){el('auth-message').textContent='Enter your email first.';return;}const {error}=await supabase.auth.resend({type:'signup',email,options:{emailRedirectTo:window.location.origin+window.location.pathname}});el('auth-message').textContent=error?.message||'Verification email requested.';});
 el('logout').addEventListener('click',async()=>{await supabase.auth.signOut();showAccount(null);if(socket)socket.close();});
 function applySettings(){(el('pixel-scale') as HTMLSelectElement).value=String(settings.pixelScale);(el('grid-toggle') as HTMLInputElement).checked=settings.grid;(el('sound-toggle') as HTMLInputElement).checked=settings.sound;(el('count-toggle') as HTMLInputElement).checked=settings.counts;draw();}
-function openSettings(){applySettings();showScreen('settings');}
+function openSettings(){previousScreen=game?'game':'menu';applySettings();showScreen('settings');}
 el('menu-settings').addEventListener('click',openSettings);el('game-settings').addEventListener('click',openSettings);
-el('settings-close').addEventListener('click',()=>showScreen(game&&!menu.classList.contains('hidden')?'menu':'game'));
+el('settings-close').addEventListener('click',()=>showScreen(previousScreen));
 el('settings-save').addEventListener('click',()=>{settings={pixelScale:Number((el('pixel-scale') as HTMLSelectElement).value),grid:(el('grid-toggle') as HTMLInputElement).checked,sound:(el('sound-toggle') as HTMLInputElement).checked,counts:(el('count-toggle') as HTMLInputElement).checked};localStorage.setItem('frontier-settings',JSON.stringify(settings));draw();showScreen(game?'game':'menu');});
 el('main-menu').addEventListener('click',()=>{if(localTimer)clearInterval(localTimer);if(socket){socket.close();socket=null;}game=null;selectedSource=-1;route=[];showScreen('menu');});
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
@@ -98,9 +99,9 @@ function startSinglePlayer(){
 function pathAdjacent(path:number[]){for(let i=1;i<path.length;i++)if(!neighborsLocal(path[i-1]!).includes(path[i]!))return false;return true;}
 function localExpand(source:number,path:number[],percent:number){
  if(!game)return false;const player=game.players.find(p=>p.id===myId),origin=game.tiles[source];if(!player||!origin||origin.owner!==myId)return false;
- let force=Math.max(1,Math.floor(origin.troops*percent/100));if(force<1)return false;origin.troops-=force;let moved=false;
- for(const target of path.slice(1,81)){const tile=game.tiles[target]!;if(tile.owner===myId)continue;if(tile.terrain==='mountain')break;const defense=tile.owner?tile.troops:0;if(force<=defense)break;const defender=game.players.find(p=>p.id===tile.owner);if(defender)defender.score=Math.max(0,defender.score-1);force-=defense+1;tile.owner=myId;tile.troops=force;player.score++;moved=true;if(force<=0)break;}
- if(!moved)origin.troops+=Math.max(0,force);return moved;
+ let force=Math.max(1,Math.floor(origin.troops*percent/100));if(force<1)return false;origin.troops-=force;let moved=false,lastCaptured=-1;
+ for(const target of path.slice(1,81)){const tile=game.tiles[target]!;if(tile.owner===myId)continue;if(tile.terrain==='mountain')break;const defense=tile.owner?tile.troops:0;if(force<=defense)break;const defender=game.players.find(p=>p.id===tile.owner);if(defender)defender.score=Math.max(0,defender.score-1);force-=defense+1;if(lastCaptured>=0&&lastCaptured!==source)game.tiles[lastCaptured]!.troops=0;tile.owner=myId;tile.troops=0;player.score++;moved=true;lastCaptured=target;if(force<=0)break;}
+ if(!moved)origin.troops+=Math.max(0,force);else if(lastCaptured>=0)game.tiles[lastCaptured]!.troops+=force;return moved;
 }
 function localRecruit(player:Player){if(!game||player.gold<25)return;const home=game.tiles[player.home];if(home?.owner===player.id){player.gold-=25;home.troops+=15;}}
 function botTurn(bot:Player){
