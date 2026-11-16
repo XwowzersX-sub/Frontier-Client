@@ -61,7 +61,7 @@ app.innerHTML = `
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
  <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">🧭 SELECT A SOURCE · CLICK A DESTINATION TO MARCH TROOPS</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
  <div class="floating-dock">
-  <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ TROOPS TO SEND</small><b id="available-troops">0</b></div></div>
+  <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ SELECTED TILE</small><b id="available-troops">0</b></div><div class="troop-stock"><div class="troop-stock-label"><small>⚔ TOTAL ARMY</small><b id="troop-cap-label">0 / 0</b></div><div class="troop-stock-track"><i id="troop-cap-fill"></i></div></div></div>
   <div class="dock-main">
    <div class="dock-tabs"><button class="dock-tab active" data-tab="command">⚔ COMMAND</button><button class="dock-tab" data-tab="build">🏗 BUILD</button><button class="dock-tab" data-tab="units">🎒 UNITS</button></div>
    <div id="command-panel" class="dock-panel">
@@ -350,24 +350,62 @@ function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,perc
  if(!game)return 0;
  const source=game.tiles[sourceIndex],target=game.tiles[targetIndex],attacker=game.players.find(p=>p.id===attackerId);
  if(!source||!target||!attacker||source.owner!==attackerId||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
- const distance=Math.hypot(sourceIndex%game.width-targetIndex%game.width,Math.floor(sourceIndex/game.width)-Math.floor(targetIndex/game.width));
+ const sx=sourceIndex%game.width,sy=Math.floor(sourceIndex/game.width),tx=targetIndex%game.width,ty=Math.floor(targetIndex/game.width);
+ const dx=tx-sx,dy=ty-sy,distance=Math.hypot(dx,dy);
  if(distance>MAX_MARCH_DISTANCE){if(attackerId==='human')report('That destination is too far. Choose a closer frontier (up to '+MAX_MARCH_DISTANCE+' tiles).');return 0;}
  if(areAllies(attackerId,target.owner)){if(attackerId==='human')report('🤝 That territory belongs to an ally.');return 0;}
  const sent=Math.floor(source.troops*Math.max(1,Math.min(100,percent))/100);
  if(sent<1){if(attackerId==='human')report('⚔ Not enough troops in the selected territory.');return 0;}
- source.troops-=sent;let remaining=sent,captured=0,lastCaptured=-1;
- for(const step of marchPath(sourceIndex,targetIndex)){
-  const tile=game.tiles[step]!;
-  if(tile.terrain==='water'||tile.terrain==='mountain')break;
-  if(tile.owner===attackerId)continue;
-  if(areAllies(attackerId,tile.owner))break;
-  const defense=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
-  if(remaining<=defense){tile.troops=Math.max(0,defense-remaining);remaining=0;break;}
-  if(tile.owner){const defender=game.players.find(p=>p.id===tile.owner);if(defender)defender.score=Math.max(0,defender.score-1);}
-  remaining-=defense+1;tile.owner=attackerId;tile.troops=0;attacker.score++;captured++;lastCaptured=step;
+ source.troops-=sent;
+ const dirX=dx/(distance||1),dirY=dy/(distance||1);
+ const maxRadius=Math.min(MAX_MARCH_DISTANCE,Math.max(3,Math.floor(3+Math.sqrt(sent)*.34)));
+ const queue:{index:number;troops:number;depth:number}[]=[{index:sourceIndex,troops:sent,depth:0}];
+ const visited=new Set<number>([sourceIndex]);let captured=0,processed=0,remainingArmy=0;
+ const getNeighbors=(index:number)=>{
+  const x=index%game!.width,y=Math.floor(index/game!.width),out:number[]=[];
+  for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++){if(!ox&&!oy)continue;const nx=x+ox,ny=y+oy;if(nx>=0&&nx<game!.width&&ny>=0&&ny<game!.height)out.push(ny*game!.width+nx);}
+  return out;
+ };
+ while(queue.length&&processed<220){
+  const wave=queue.shift()!;processed++;
+  if(wave.depth>=maxRadius||wave.troops<3)continue;
+  const wx=wave.index%game.width,wy=Math.floor(wave.index/game.width);
+  const candidates=getNeighbors(wave.index).filter(next=>{
+   if(visited.has(next))return false;
+   const tile=game!.tiles[next]!;
+   if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner===attackerId||areAllies(attackerId,tile.owner))return false;
+   const nx=next%game!.width,ny=Math.floor(next/game!.width),rx=nx-sx,ry=ny-sy,radial=Math.hypot(rx,ry);
+   if(radial>maxRadius||radial<.1)return false;
+   const forward=(rx*dirX+ry*dirY)/(radial||1);
+   return forward>-.08;
+  }).map(next=>{
+   const nx=next%game!.width,ny=Math.floor(next/game!.width),rx=nx-sx,ry=ny-sy,radial=Math.hypot(rx,ry);
+   const forward=(rx*dirX+ry*dirY)/(radial||1),lateral=Math.abs(rx*dirY-ry*dirX)/(radial||1);
+   const tile=game!.tiles[next]!;
+   return{next,score:forward*1.7-lateral*.48+(tile.owner?-.08:0)+Math.random()*.23};
+  }).sort((a,b)=>b.score-a.score);
+  if(!candidates.length){remainingArmy+=wave.troops;continue;}
+  const branchCount=Math.min(wave.depth<2?3:2,candidates.length,Math.max(1,Math.floor(wave.troops/4)));
+  const chosen=candidates.slice(0,branchCount);
+  const share=Math.floor(wave.troops/branchCount);
+  for(const option of chosen){
+   const next=option.next;visited.add(next);
+   const tile=game.tiles[next]!;
+   const defender=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
+   const distanceLoss=Math.max(1,Math.ceil(share*(.025+wave.depth*.004)));
+   const effective=share-distanceLoss;
+   if(effective<=defender){
+    tile.troops=Math.max(0,defender-effective);
+    continue;
+   }
+   if(tile.owner){const previous=game.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
+   const survivors=effective-defender-1;
+   tile.owner=attackerId;tile.troops=survivors;attacker.score++;captured++;
+   if(survivors>=3)queue.push({index:next,troops:survivors,depth:wave.depth+1});
+   else remainingArmy+=survivors;
+  }
  }
- if(lastCaptured>=0)game.tiles[lastCaptured]!.troops+=remaining;
- if(attackerId==='human')report(captured?'⚔ Army marched forward and captured '+captured+' territory tile'+(captured===1?'':'s')+'.':'🛡 Army was stopped. Send more troops or choose another direction.');
+ if(attackerId==='human')report(captured?'⚔ Your army spread outward in a widening front, capturing '+captured+' tile'+(captured===1?'':'s')+'. Troops were lost as the wave advanced.':'🛡 The expansion wave ran out of strength before it could capture land.');
  return captured;
 }
 function localClaim(sourceIndex:number,targetIndex:number,percent:number){return localMarch('human',sourceIndex,targetIndex,percent)>0;}
@@ -452,6 +490,7 @@ function draw(){
   if(tile.terrain==='mountain'){ctx.fillStyle='#98a6a3';ctx.fillRect(x+2,y+2,w-4,h-4);ctx.fillStyle='#d7d9c9';ctx.beginPath();ctx.moveTo(x+w*.12,y+h*.83);ctx.lineTo(x+w*.5,y+h*.15);ctx.lineTo(x+w*.9,y+h*.83);ctx.fill();ctx.fillStyle='#727f7c';ctx.fillRect(x+w*.38,y+h*.69,w*.25,h*.09);}
   else if(tile.terrain==='forest'){ctx.fillStyle=owner?owner.color:'#294c39';ctx.fillRect(x+2,y+2,w-4,h-4);for(let k=0;k<6;k++){const tx=x+((seed*11+k*23)%(w-8))+3,ty=y+((seed*7+k*17)%(h-12))+3;ctx.fillStyle='#18382b';ctx.fillRect(tx,ty,4,7);ctx.fillStyle='#5f8d50';ctx.fillRect(tx-2,ty+2,8,3);}}
   else{ctx.fillStyle=owner?'#ffffff12':'#d4ddb333';for(let k=0;k<12;k++)ctx.fillRect(x+((seed*13+k*19)%(w-4))+2,y+((seed*9+k*11)%(h-4))+2,2,2);}
+  if(owner){ctx.fillStyle='rgba(0,0,0,.42)';ctx.fillRect(x,y,w,h);ctx.fillStyle=owner.color;ctx.fillRect(x+w*.1,y+h*.1,w*.8,h*.8);}
   const buildings=tile.buildings||[];if(buildings.length){const glyph:Record<string,string>={city:'C',factory:'F',port:'P',defense_post:'D',market:'M',farm:'f'};ctx.fillStyle='#111c20';ctx.fillRect(x+w*.65,y+h*.05,w*.3,h*.25);ctx.fillStyle='#f8e8ad';ctx.font='bold '+Math.max(9,h*.2)+'px monospace';ctx.textAlign='center';ctx.fillText(buildings.slice(0,2).map(b=>glyph[b.type]||'•').join(''),x+w*.8,y+h*.23);}
   if(tile.owner&&settings.counts){ctx.fillStyle='#071116bb';ctx.fillRect(x+w*.22,y+h*.72,w*.56,h*.2);ctx.fillStyle='#fff';ctx.font='bold '+Math.max(7,h*.15)+'px monospace';ctx.textAlign='center';ctx.fillText(String(tile.troops),x+w*.5,y+h*.87);}
   if(i===selectedSource){ctx.strokeStyle='#ffe49a';ctx.lineWidth=Math.max(3,w*.035);ctx.strokeRect(x+2,y+2,w-4,h-4);}
@@ -478,6 +517,11 @@ function fieldRank(score:number){
 }
 function updateStats(){
  const current=game,me=current?.players.find(p=>p.id===myId),owned=current?.tiles.filter(t=>t.owner===myId).length||0;
+ const armyTiles=current?.tiles.filter(t=>t.owner===myId)||[];
+ const troopCurrent=armyTiles.reduce((sum,t)=>sum+t.troops,0);
+ const troopMaximum=armyTiles.reduce((sum,t)=>sum+99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50,0);
+ el('troop-cap-label').textContent=troopCurrent.toLocaleString()+' / '+troopMaximum.toLocaleString();
+ (el('troop-cap-fill') as HTMLElement).style.width=(troopMaximum?Math.min(100,troopCurrent/troopMaximum*100):0)+'%';
  el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);el('rank-label').textContent=fieldRank(me?.score||0);el('online').textContent=(mode==='single'?String(current?.players.length||0):String(current?.players.filter(p=>p.connected).length||0))+'/'+(current?.capacity||50);el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
  el('available-troops').textContent=selectedSource>=0&&current?.tiles[selectedSource]?.owner===myId?String(current.tiles[selectedSource]!.troops):'—';
  const source=current&&selectedSource>=0?current.tiles[selectedSource]:null;
