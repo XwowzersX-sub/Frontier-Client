@@ -10,8 +10,9 @@ const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.
 type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
 type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
-type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number };
-type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; capacity?: number };
+type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number };
+type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:number[];step?:number;to?:number};
+type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[] };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
 <div id="menu-screen" class="screen menu-screen">
@@ -66,7 +67,8 @@ app.innerHTML = `
    <div class="dock-tabs"><button class="dock-tab active" data-tab="command">⚔ COMMAND</button><button class="dock-tab" data-tab="build">🏗 BUILD</button><button class="dock-tab" data-tab="units">🎒 UNITS</button></div>
    <div id="command-panel" class="dock-panel">
     <div class="ratio-control"><small>⚔ TROOPS TO SEND</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
-    <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div>
+    <div class="workforce-control"><label for="worker-ratio">👷 WORKFORCE / INCOME <b id="worker-ratio-label">30%</b></label><input id="worker-ratio" type="range" min="0" max="100" value="30"></div>
+    <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="boat-mode" class="dock-action">🚢 SETTLE ISLAND <small>60 GOLD · PORT</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div>
    </div>
    <div id="build-panel" class="dock-panel hidden">
     <div class="build-grid">
@@ -103,9 +105,10 @@ let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
-let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='random',soloBotCount=24,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=0,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false,soloSpawnPreference='center';
+let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='random',soloBotCount=24,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=0,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false,soloSpawnPreference='center',soloWorkerRatio=30,boatMode=false;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
-let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null,hoverTile=-1;
+let cameraZoom=8,cameraX=500,cameraY=500,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null,hoverTile=-1;
+let requestedChunks=new Set<string>(),receivedChunks=new Set<string>();
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
@@ -136,7 +139,7 @@ async function connect(){
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
 
-const WORLD_WIDTH=180,WORLD_HEIGHT=110,MAX_MARCH_DISTANCE=15;
+const WORLD_WIDTH=1000,WORLD_HEIGHT=1000,CHUNK_SIZE=64,MAX_MARCH_DISTANCE=15;
 const WORLD_MAPS=[
  {id:'continents',name:'Continents'},{id:'islands',name:'Island Chain'},{id:'pangaea',name:'Pangaea'},
  {id:'highlands',name:'Highlands'},{id:'twin-worlds',name:'Twin Worlds'},{id:'inland-sea',name:'Inland Sea'},
