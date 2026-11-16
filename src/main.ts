@@ -12,7 +12,7 @@ type Player = { id: string; name: string; color: string; gold: number; score: nu
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
-<div id="main-menu" class="screen menu-screen">
+<div id="menu-screen" class="screen menu-screen">
  <div class="menu-brand">PIXEL <span>FRONTIER</span><small>THE WORLD IS YOURS TO CLAIM</small></div>
  <div class="menu-card">
   <div class="eyebrow">COMMANDER ACCESS</div>
@@ -59,7 +59,7 @@ try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings'
 let forcePercent=50,selectedSource=-1,route:number[]=[],dragging=false,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
-const menu=el('main-menu'),gameScreen=el('game-screen');
+const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
 function showScreen(name:'menu'|'game'|'settings'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');}
 function getNickname(){const field=el('nickname') as HTMLInputElement;nickname=(field.value.trim().replace(/[^a-zA-Z0-9 _-]/g,'').slice(0,18)||'Commander');field.value=nickname;localStorage.setItem('frontier-nickname',nickname);el('commander-label').textContent=nickname.toUpperCase();el('hud-name').textContent=nickname;return nickname;}
@@ -77,8 +77,8 @@ el('settings-close').addEventListener('click',()=>showScreen(previousScreen));
 el('settings-save').addEventListener('click',()=>{settings={pixelScale:Number((el('pixel-scale') as HTMLSelectElement).value),grid:(el('grid-toggle') as HTMLInputElement).checked,sound:(el('sound-toggle') as HTMLInputElement).checked,counts:(el('count-toggle') as HTMLInputElement).checked};localStorage.setItem('frontier-settings',JSON.stringify(settings));draw();showScreen(game?'game':'menu');});
 el('main-menu').addEventListener('click',()=>{if(localTimer)clearInterval(localTimer);if(socket){socket.close();socket=null;}game=null;selectedSource=-1;route=[];showScreen('menu');});
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
-el('menu-single').addEventListener('click',()=>{getNickname();startSinglePlayer();showScreen('game');});
-el('menu-multi').addEventListener('click',()=>{getNickname();showScreen('game');void connect();});
+el('menu-single').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
+el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('game');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
 async function connect(){
  mode='multi';if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
  if(socket?.readyState===WebSocket.OPEN){report('Already connected.');return;}
