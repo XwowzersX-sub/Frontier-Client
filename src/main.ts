@@ -46,7 +46,7 @@ app.innerHTML = `
  <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas>
  <div class="world-topbar">
   <div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div>
-  <div class="world-metrics"><span>COMMANDER <b id="commander-label">COMMANDER</b></span><span>GOLD <b id="gold">0</b></span><span>LAND <b id="territory">0</b></span><span>TURN <b id="turn">0</b></span><span>TIME <b id="time-left">∞</b></span><span>ONLINE <b id="online">0</b></span></div>
+  <div class="world-metrics"><span>COMMANDER <b id="commander-label">COMMANDER</b></span><span>GOLD <b id="gold">0</b></span><span>LAND <b id="territory">0</b></span><span>FIELD RANK <b id="rank-label">IRON</b></span><span>TURN <b id="turn">0</b></span><span>TIME <b id="time-left">∞</b></span><span>ONLINE <b id="online">0</b></span></div>
   <div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙</button><button id="main-menu" class="world-icon">MENU</button></div>
  </div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
@@ -325,9 +325,19 @@ function draw(){
  });
  if(settings.grid){ctx.strokeStyle='rgba(6,13,16,.25)';ctx.lineWidth=1;for(let x=0;x<=current.width;x++){ctx.beginPath();ctx.moveTo(x*w,0);ctx.lineTo(x*w,canvas.height);ctx.stroke();}for(let y=0;y<=current.height;y++){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(canvas.width,y*h);ctx.stroke();}}
 }
+function fieldRank(score:number){
+ if(score>=180)return 'GRANDMASTER';
+ if(score>=120)return 'MASTER';
+ if(score>=80)return 'DIAMOND';
+ if(score>=50)return 'PLATINUM';
+ if(score>=30)return 'GOLD';
+ if(score>=15)return 'SILVER';
+ if(score>=5)return 'BRONZE';
+ return 'IRON';
+}
 function updateStats(){
  const current=game,me=current?.players.find(p=>p.id===myId),owned=current?.tiles.filter(t=>t.owner===myId).length||0;
- el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);el('online').textContent=String(current?.players.filter(p=>p.connected).length||0);
+ el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);el('rank-label').textContent=fieldRank(me?.score||0);el('online').textContent=String(current?.players.filter(p=>p.connected).length||0);
  el('available-troops').textContent=selectedSource>=0&&current?.tiles[selectedSource]?.owner===myId?String(current.tiles[selectedSource]!.troops):'—';
  const source=current&&selectedSource>=0?current.tiles[selectedSource]:null;
  el('selected-info').textContent=source?'TROOPS '+source.troops+' · '+(source.terrain||'land').toUpperCase()+' · '+(source.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
