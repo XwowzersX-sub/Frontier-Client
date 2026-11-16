@@ -89,6 +89,7 @@ try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings'
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
 let soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloSpeed=1,soloPaused=false,matchWinner:string|null=null;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
+let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
@@ -120,7 +121,7 @@ async function connect(){
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);
- selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;
+ selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;resetCamera();
  soloMap=(el('solo-map') as HTMLSelectElement).value;
  soloBotCount=Number((el('solo-bots') as HTMLSelectElement).value);
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
@@ -227,6 +228,9 @@ function botBuild(bot:Player){
  }
 }
 function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;botTurn(bot);if(soloDifficulty==='intense'||soloDifficulty==='impossible')botTurn(bot);if(soloDifficulty==='impossible'&&game.tick%2===0)botTurn(bot);if(game.tick%3===0)botBuild(bot);}render();checkSoloWinner();}
+function applyCamera(){canvas.style.transformOrigin='center center';canvas.style.transform='translate3d('+cameraX+'px,'+cameraY+'px,0) scale('+cameraZoom+')';}
+function resetCamera(){cameraZoom=1;cameraX=0;cameraY=0;applyCamera();}
+function zoomCamera(delta:number){cameraZoom=Math.max(1,Math.min(2.8,cameraZoom+delta));applyCamera();}
 function tileAt(event:MouseEvent|PointerEvent){if(!game)return-1;const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*game.width/r.width),y=Math.floor((event.clientY-r.top)*game.height/r.height);return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;}
 function draw(){
  const targetWidth=Math.max(1800,Math.round(window.innerWidth*1.3/settings.pixelScale)),targetHeight=Math.max(1200,Math.round(window.innerHeight*1.3/settings.pixelScale));
@@ -274,7 +278,25 @@ document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>
 el('recruit').addEventListener('click',()=>{if(mode==='single'&&game){const p=game.players.find(v=>v.id===myId);if(p)localRecruit(p);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'recruit'}));});
 el('recruit-large').addEventListener('click',()=>el('recruit').click());
 el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selectedSource=-1;updateStats();draw();});
-el('center-map').addEventListener('click',()=>{canvas.style.transform='translate(0,0) scale(1)';});
-window.addEventListener('keydown',event=>{if(event.key==='Escape'){activeBuilding=null;updateStats();draw();}if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement)return;if(event.code==='Space'&&mode==='single'&&!matchWinner){event.preventDefault();el('pause-solo').click();return;}const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','market','farm'];if(key>=1&&key<=6){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}});
-window.addEventListener('resize',()=>draw());
+el('center-map').addEventListener('click',resetCamera);
+canvas.addEventListener('wheel',event=>{event.preventDefault();zoomCamera(event.deltaY<0?.12:-.12);},{passive:false});
+canvas.addEventListener('pointerdown',event=>{if(event.button!==1)return;event.preventDefault();cameraDragging=true;cameraPointer=event.pointerId;cameraStart={x:event.clientX,y:event.clientY,cx:cameraX,cy:cameraY};canvas.setPointerCapture(event.pointerId);});
+canvas.addEventListener('pointermove',event=>{if(!cameraDragging||!cameraStart||event.pointerId!==cameraPointer)return;cameraX=cameraStart.cx+event.clientX-cameraStart.x;cameraY=cameraStart.cy+event.clientY-cameraStart.y;applyCamera();});
+canvas.addEventListener('pointerup',event=>{if(event.pointerId===cameraPointer){cameraDragging=false;cameraStart=null;}});
+canvas.addEventListener('pointercancel',()=>{cameraDragging=false;cameraStart=null;});
+canvas.addEventListener('contextmenu',event=>{event.preventDefault();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');});
+window.addEventListener('keydown',event=>{
+ if(event.key==='Escape'){activeBuilding=null;updateStats();draw();return;}
+ if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement||document.activeElement instanceof HTMLSelectElement)return;
+ if(event.code==='Space'&&mode==='single'&&!matchWinner){event.preventDefault();el('pause-solo').click();return;}
+ if(event.key.toLowerCase()==='c'){resetCamera();return;}
+ if(event.key.toLowerCase()==='m'){settings.grid=!settings.grid;draw();return;}
+ if(event.key.toLowerCase()==='q'){zoomCamera(-.12);return;}
+ if(event.key.toLowerCase()==='e'){zoomCamera(.12);return;}
+ const pans:Record<string,[number,number]>={w:[0,48],s:[0,-48],a:[48,0],d:[-48,0]};
+ const pan=pans[event.key.toLowerCase()];if(pan){cameraX+=pan[0];cameraY+=pan[1];applyCamera();return;}
+ const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','market','farm'];
+ if(key>=1&&key<=6){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}
+});
+window.addEventListener('resize',()=>{draw();applyCamera();});
 applySettings();showScreen('menu');getNickname();
