@@ -71,7 +71,8 @@ app.innerHTML = `
     </div><div class="dock-hint" id="build-hint">Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.</div>
    </div>
    <div id="units-panel" class="dock-panel hidden">
-    <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +5</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
+    <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +15</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
+    <div class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div>
     <div class="dock-hint">Click adjacent neutral or enemy territory to attack using the selected troop ratio. Buildings provide passive bonuses.</div>
    </div>
 
@@ -203,6 +204,51 @@ el('speed-solo').addEventListener('click',()=>{
  resetSoloTimer();
 });
 el('new-solo').addEventListener('click',()=>{startSinglePlayer();});
+type SoloSave = {version:1;game:GameState;soloMode:typeof soloMode;soloMap:string;soloBotCount:number;soloDifficulty:typeof soloDifficulty;soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number};
+function makeSoloSave():SoloSave|null{
+ if(!game||mode!=='single')return null;
+ return {version:1,game:JSON.parse(JSON.stringify(game)) as GameState,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent,soloLengthMinutes,soloSpeed};
+}
+function restoreSoloSave(value:unknown):boolean{
+ if(!value||typeof value!=='object')return false;
+ const save=value as Partial<SoloSave>;
+ if(save.version!==1||!save.game||save.game.width!==60||save.game.height!==40||!Array.isArray(save.game.tiles)||save.game.tiles.length!==2400||!Array.isArray(save.game.players)||!save.game.players.some(p=>p.id==='human'))return false;
+ game={...save.game,tiles:save.game.tiles.map(t=>({...t,buildings:Array.isArray(t.buildings)?t.buildings:[]}))};
+ soloMode=save.soloMode==='duos'||save.soloMode==='trios'||save.soloMode==='squads'?save.soloMode:'ffa';
+ soloMap=save.soloMap||'continents';soloBotCount=Math.max(0,Math.min(7,Number(save.soloBotCount)||0));
+ soloDifficulty=save.soloDifficulty==='relaxed'||save.soloDifficulty==='intense'||save.soloDifficulty==='impossible'?save.soloDifficulty:'balanced';
+ soloWinPercent=[60,70,80,90].includes(Number(save.soloWinPercent))?Number(save.soloWinPercent):80;
+ soloLengthMinutes=[0,10,20,40].includes(Number(save.soloLengthMinutes))?Number(save.soloLengthMinutes):20;
+ soloSpeed=[1,2,4].includes(Number(save.soloSpeed))?Number(save.soloSpeed):1;
+ mode='single';myId='human';selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;resetCamera();
+ (el('solo-mode') as HTMLSelectElement).value=soloMode;(el('solo-map') as HTMLSelectElement).value=soloMap;(el('solo-bots') as HTMLSelectElement).value=String(soloBotCount);
+ (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value=String(soloWinPercent);(el('solo-length') as HTMLSelectElement).value=String(soloLengthMinutes);
+ (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';
+ (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
+ el('match-banner').classList.add('hidden');el('solo-toolbar').classList.remove('hidden');
+ setConnection('SOLO CAMPAIGN',true);showScreen('game');render();resetSoloTimer();return true;
+}
+el('save-solo').addEventListener('click',()=>{
+ const save=makeSoloSave();if(!save){report('Campaign saves are available in Single Player.');return;}
+ try{localStorage.setItem('frontier-solo-save',JSON.stringify(save));report('Campaign saved on this device.');}
+ catch{report('Could not save. Browser storage may be full. Try exporting the save instead.');}
+});
+el('load-solo').addEventListener('click',()=>{
+ try{const raw=localStorage.getItem('frontier-solo-save');if(!raw){report('No local campaign save found.');return;}if(!restoreSoloSave(JSON.parse(raw)))report('That save file is invalid or incompatible.');else report('Campaign loaded.');}
+ catch{report('Could not load the local campaign save.');}
+});
+el('export-solo').addEventListener('click',()=>{
+ const save=makeSoloSave();if(!save){report('Start a solo campaign before exporting.');return;}
+ const blob=new Blob([JSON.stringify(save)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download='pixel-frontier-campaign.json';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);report('Campaign export prepared as a JSON save file.');
+});
+el('import-solo').addEventListener('click',()=>{(el('solo-file') as HTMLInputElement).click();});
+el('solo-file').addEventListener('change',async()=>{
+ const file=(el('solo-file') as HTMLInputElement).files?.[0];if(!file)return;
+ try{const value=JSON.parse(await file.text());if(!restoreSoloSave(value)){report('That campaign file is invalid or from an incompatible version.');return;}localStorage.setItem('frontier-solo-save',JSON.stringify(makeSoloSave()));report('Campaign imported successfully.');}
+ catch{report('Could not read that campaign file.');}
+ (el('solo-file') as HTMLInputElement).value='';
+});
 function localClaim(targetIndex:number,percent:number){
  if(!game)return false;const tile=game.tiles[targetIndex];if(!tile||tile.owner===myId||tile.terrain==='mountain'||tile.terrain==='water')return false;
  const targetPlayer=game.players.find(p=>p.id===tile.owner),self=game.players.find(p=>p.id===myId);if(targetPlayer&&self&&soloMode!=='ffa'&&targetPlayer.team===self.team){report('That territory belongs to an ally.');return false;}
