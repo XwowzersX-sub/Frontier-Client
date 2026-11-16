@@ -636,7 +636,7 @@ function localTick(){
  }
  render();checkSoloWinner();
 }
-function applyCamera(){draw();requestChunksForView();}
+function applyCamera(){draw();drawMiniMap();requestChunksForView();}
 function resetCamera(){
  cameraZoom=8;
  if(game){const me=game.players.find(p=>p.id===myId);if(me&&me.home>=0){cameraX=me.home%game.width;cameraY=Math.floor(me.home/game.width);}else{cameraX=game.width/2;cameraY=game.height/2;}}
@@ -729,7 +729,6 @@ function draw(){
   const sx=selectedSource%current.width,sy=Math.floor(selectedSource/current.width),tx=hoverTile%current.width,ty=Math.floor(hoverTile/current.width);
   if(Math.hypot(sx-tx,sy-ty)<=MAX_MARCH_DISTANCE){ctx.save();ctx.strokeStyle='#82f4ffcc';ctx.lineWidth=Math.max(1.5,tilePx*.12);ctx.setLineDash([tilePx*.7,tilePx*.5]);ctx.shadowColor='#54eaff';ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo((sx-cameraX+.5)*tilePx+canvas.width/2,(sy-cameraY+.5)*tilePx+canvas.height/2);ctx.lineTo((tx-cameraX+.5)*tilePx+canvas.width/2,(ty-cameraY+.5)*tilePx+canvas.height/2);ctx.stroke();ctx.restore();}
  }
- drawMiniMap();
 }
 function fieldRank(score:number){
  if(score>=180)return 'GRANDMASTER';
@@ -775,7 +774,7 @@ function updateStats(){
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
  (el('boat-mode') as HTMLButtonElement).classList.toggle('build-selected',boatMode);
 }
-function render(){if(!game)return;const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();}
+function render(){if(!game)return;const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();drawMiniMap();}
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));}
 canvas.addEventListener('click',event=>{
  if(!game)return;
