@@ -232,7 +232,7 @@ function startSinglePlayer(){
  soloRandomSpawn=(el('sandbox-random') as HTMLInputElement).checked;soloInfiniteGold=(el('sandbox-gold') as HTMLInputElement).checked;soloInfiniteTroops=(el('sandbox-troops') as HTMLInputElement).checked;soloAnonymous=(el('sandbox-anonymous') as HTMLInputElement).checked;
  const actualMap=soloMap==='random'?WORLD_MAPS[Math.floor(Math.random()*WORLD_MAPS.length)]!.id:soloMap;
  const mapName=mapTitle(actualMap);
- const tiles=createWorldTiles(actualMap,Math.random()*1000);
+ const mapSeed=Math.random()*1000,generated=createWorldTiles(actualMap,mapSeed),tiles=generated.tiles;
  const teamSize=soloMode==='duos'?2:soloMode==='trios'?3:soloMode==='squads'?4:1;
  const totalPlayers=soloBotCount+1,used:number[]=[];
  const preference=soloRandomSpawn?['northwest','north','northeast','west','center','east','southwest','south','southeast'][Math.floor(Math.random()*9)]!:soloSpawnPreference;
@@ -242,10 +242,11 @@ function startSinglePlayer(){
   const home=i===0?humanHome:chooseSpawnSite('center',used,true);
   if(i>0)used.push(home);
   const id=i===0?'human':'bot-'+i;
-  clearSpawnArea(tiles,home,id,playerColor(i));
-  return{id,name:(names[i]||('Commander '+(i+1)))+(i>BOT_NAMES.length?' '+i:''),color:playerColor(i),gold:160,score:0,connected:true,home,team:Math.floor(i/teamSize)};
+  clearSpawnArea(tiles,home,id,playerColor(i),actualMap,mapSeed);
+  return{id,name:(names[i]||('Commander '+(i+1)))+(i>BOT_NAMES.length?' '+i:''),color:playerColor(i),gold:160,score:0,connected:true,home,team:Math.floor(i/teamSize),workerRatio:30};
  });
- game={width:WORLD_WIDTH,height:WORLD_HEIGHT,tiles,players,tick:0,round:1,mapName,capacity:50};
+ game={width:WORLD_WIDTH,height:WORLD_HEIGHT,tiles,players,tick:0,round:1,mapName,mapSeed,playable:generated.playable,capacity:50,ships:[]};
+ soloWorkerRatio=30;boatMode=false;requestedChunks.clear();receivedChunks.clear();cameraZoom=8;cameraX=humanHome%WORLD_WIDTH;cameraY=Math.floor(humanHome/WORLD_WIDTH);
  setConnection('SOLO MATCH',true);
  el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
  (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
@@ -253,7 +254,7 @@ function startSinglePlayer(){
  el('match-banner').classList.add('hidden');
  el('world-name').textContent=mapName.toUpperCase();el('round').textContent='1';
  report(players.length===1?'🌌 Empty frontier. Expand to the land victory target.':'🤖 '+soloBotCount+' AI commanders · '+soloMode.toUpperCase()+' · '+soloDifficulty.toUpperCase()+' · '+mapName.toUpperCase()+'. Select a territory and send an army.');
- render();resetSoloTimer();
+ applyCamera();render();resetSoloTimer();
 }
 function resetSoloTimer(){
  if(localTimer)clearInterval(localTimer);
