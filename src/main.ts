@@ -131,7 +131,7 @@ async function connect(){
  mode='multi';el('solo-toolbar').classList.add('hidden');el('solo-save-actions').classList.add('hidden');if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
  if(socket?.readyState===WebSocket.OPEN){report('Already connected.');return;}
  setConnection('WAKING SERVER…');report('Waking the online world. Render may take up to a minute.');reconnecting=true;
- for(let attempt=0;attempt<14;attempt++){if(!reconnecting)return;try{const response=await fetch(serverUrl+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});if(response.ok){const {data}=await supabase.auth.getSession();const token=data.session?.access_token;socket=new WebSocket(serverUrl.replace(/^http/,'ws')+'/ws',token?['frontier','auth.'+token]:['frontier']);socket.onopen=()=>{setConnection('ONLINE',true);socket?.send(JSON.stringify({type:'join',name:getNickname()}));reconnecting=false;};socket.onmessage=event=>{const packet=JSON.parse(event.data);if(packet.type==='welcome')myId=packet.id;if(packet.type==='state'){game=packet.state as GameState;render();}if(packet.type==='notice'||packet.type==='error')report(packet.text);};socket.onclose=()=>{if(mode==='multi'){setConnection('DISCONNECTED');report('Connection lost. Return to menu and reconnect.');}};socket.onerror=()=>setConnection('CONNECTION ERROR');return;}}catch{}await new Promise(resolve=>setTimeout(resolve,Math.min(1500*(attempt+1),9000)));}
+ for(let attempt=0;attempt<14;attempt++){if(!reconnecting)return;try{const response=await fetch(serverUrl+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});if(response.ok){const {data}=await supabase.auth.getSession();const token=data.session?.access_token;socket=new WebSocket(serverUrl.replace(/^http/,'ws')+'/ws',token?['frontier','auth.'+token]:['frontier']);socket.onopen=()=>{setConnection('ONLINE',true);socket?.send(JSON.stringify({type:'join',name:getNickname(),spawnPreference:(el('start-region') as HTMLSelectElement).value}));reconnecting=false;};socket.onmessage=event=>{const packet=JSON.parse(event.data);if(packet.type==='welcome')myId=packet.id;if(packet.type==='state'){game=packet.state as GameState;render();}if(packet.type==='notice'||packet.type==='error')report(packet.text);};socket.onclose=()=>{if(mode==='multi'){setConnection('DISCONNECTED');report('Connection lost. Return to menu and reconnect.');}};socket.onerror=()=>setConnection('CONNECTION ERROR');return;}}catch{}await new Promise(resolve=>setTimeout(resolve,Math.min(1500*(attempt+1),9000)));}
  reconnecting=false;setConnection('SERVER UNAVAILABLE');report('Could not wake server. Check Render and try again.');
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
@@ -259,7 +259,10 @@ function checkSoloWinner(){
   groups.set(team,current);
  }
  let winningEntry=[...groups.entries()].find(([,group])=>group.land/playable>=soloWinPercent/100);
+ const surviving=[...groups.entries()].filter(([,group])=>group.land>0);
+ const lastStanding=groups.size>1&&surviving.length===1;
  const timeExpired=soloLengthMinutes>0&&game.tick>=soloLengthMinutes*15;
+ if(!winningEntry&&lastStanding)winningEntry=surviving[0];
  if(!winningEntry&&timeExpired)winningEntry=[...groups.entries()].sort((a,b)=>b[1].land-a[1].land)[0];
  if(!winningEntry)return;
  const [winningTeam,winner]=winningEntry;
@@ -268,7 +271,7 @@ function checkSoloWinner(){
  matchWinner=winner.name;soloPaused=true;if(localTimer)clearInterval(localTimer);
  el('match-result').textContent=isPlayerTeam?'VICTORY':'DEFEAT';
  const landPercent=Math.round(winner.land/playable*100);
- el('match-result-detail').textContent=timeExpired?'Time expired · '+landPercent+'% of playable land.':(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+' reached '+soloWinPercent+'% land.';
+ el('match-result-detail').textContent=timeExpired?'Time expired · '+landPercent+'% of playable land.':(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+(lastStanding?' is the last commander standing.':' reached '+soloWinPercent+'% land.');
  el('match-banner').classList.remove('hidden');
  report(winner.name+(soloMode==='ffa'?'':' and their allies')+' won the campaign. Start a new match to play again.');
 }
@@ -285,15 +288,15 @@ el('speed-solo').addEventListener('click',()=>{
  resetSoloTimer();
 });
 el('new-solo').addEventListener('click',()=>{startSinglePlayer();});
-type SoloSave = {version:1;game:GameState;soloMode:'ffa'|'duos'|'trios'|'squads';soloMap:string;soloBotCount:number;soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible';soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number;soloRandomSpawn:boolean;soloInfiniteGold:boolean;soloInfiniteTroops:boolean;soloAnonymous:boolean};
+type SoloSave = {version:1;game:GameState;soloMode:'ffa'|'duos'|'trios'|'squads';soloMap:string;soloBotCount:number;soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible';soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number;soloRandomSpawn:boolean;soloInfiniteGold:boolean;soloInfiniteTroops:boolean;soloAnonymous:boolean;soloSpawnPreference?:string};
 function makeSoloSave():SoloSave|null{
  if(!game||mode!=='single')return null;
- return {version:1,game:JSON.parse(JSON.stringify(game)) as GameState,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent,soloLengthMinutes,soloSpeed,soloRandomSpawn,soloInfiniteGold,soloInfiniteTroops,soloAnonymous};
+ return {version:1,game:JSON.parse(JSON.stringify(game)) as GameState,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent,soloLengthMinutes,soloSpeed,soloRandomSpawn,soloInfiniteGold,soloInfiniteTroops,soloAnonymous,soloSpawnPreference};
 }
 function restoreSoloSave(value:unknown):boolean{
  if(!value||typeof value!=='object')return false;
  const save=value as Partial<SoloSave>;
- if(save.version!==1||!save.game||save.game.width!==60||save.game.height!==40||!Array.isArray(save.game.tiles)||save.game.tiles.length!==2400||!Array.isArray(save.game.players)||!save.game.players.some(p=>p.id==='human'))return false;
+ if(save.version!==1||!save.game||!Number.isInteger(save.game.width)||!Number.isInteger(save.game.height)||save.game.width<30||save.game.height<20||!Array.isArray(save.game.tiles)||save.game.tiles.length!==save.game.width*save.game.height||!Array.isArray(save.game.players)||!save.game.players.some(p=>p.id==='human'))return false;
  game={...save.game,tiles:save.game.tiles.map(t=>({...t,buildings:Array.isArray(t.buildings)?t.buildings:[]}))};
  soloMode=save.soloMode==='duos'||save.soloMode==='trios'||save.soloMode==='squads'?save.soloMode:'ffa';
  soloMap=save.soloMap||'continents';soloBotCount=Math.max(0,Math.min(7,Number(save.soloBotCount)||0));
@@ -301,11 +304,11 @@ function restoreSoloSave(value:unknown):boolean{
  soloWinPercent=[60,70,80,90].includes(Number(save.soloWinPercent))?Number(save.soloWinPercent):80;
  soloLengthMinutes=[0,10,20,40].includes(Number(save.soloLengthMinutes))?Number(save.soloLengthMinutes):20;
  soloSpeed=[1,2,4].includes(Number(save.soloSpeed))?Number(save.soloSpeed):1;
- soloRandomSpawn=Boolean(save.soloRandomSpawn);soloInfiniteGold=Boolean(save.soloInfiniteGold);soloInfiniteTroops=Boolean(save.soloInfiniteTroops);soloAnonymous=Boolean(save.soloAnonymous);
+ soloRandomSpawn=Boolean(save.soloRandomSpawn);soloInfiniteGold=Boolean(save.soloInfiniteGold);soloInfiniteTroops=Boolean(save.soloInfiniteTroops);soloAnonymous=Boolean(save.soloAnonymous);soloSpawnPreference=save.soloSpawnPreference||'center';
  mode='single';myId='human';selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;resetCamera();
  (el('solo-mode') as HTMLSelectElement).value=soloMode;(el('solo-map') as HTMLSelectElement).value=soloMap;(el('solo-bots') as HTMLSelectElement).value=String(soloBotCount);
  (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value=String(soloWinPercent);
- (el('sandbox-random') as HTMLInputElement).checked=soloRandomSpawn;(el('sandbox-gold') as HTMLInputElement).checked=soloInfiniteGold;(el('sandbox-troops') as HTMLInputElement).checked=soloInfiniteTroops;(el('sandbox-anonymous') as HTMLInputElement).checked=soloAnonymous;(el('solo-length') as HTMLSelectElement).value=String(soloLengthMinutes);
+ (el('sandbox-random') as HTMLInputElement).checked=soloRandomSpawn;(el('sandbox-gold') as HTMLInputElement).checked=soloInfiniteGold;(el('sandbox-troops') as HTMLInputElement).checked=soloInfiniteTroops;(el('sandbox-anonymous') as HTMLInputElement).checked=soloAnonymous;(el('start-region') as HTMLSelectElement).value=soloSpawnPreference;(el('solo-length') as HTMLSelectElement).value=String(soloLengthMinutes);
  (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';
  (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
  el('match-banner').classList.add('hidden');el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
@@ -332,16 +335,42 @@ el('solo-file').addEventListener('change',async()=>{
  catch{report('Could not read that campaign file.');}
  (el('solo-file') as HTMLInputElement).value='';
 });
-function localClaim(targetIndex:number,percent:number){
- if(!game)return false;const tile=game.tiles[targetIndex];if(!tile||tile.owner===myId||tile.terrain==='mountain'||tile.terrain==='water')return false;
- const targetPlayer=game.players.find(p=>p.id===tile.owner),self=game.players.find(p=>p.id===myId);if(targetPlayer&&self&&soloMode!=='ffa'&&targetPlayer.team===self.team){report('That territory belongs to an ally.');return false;}
- const adjacent=neighborsLocal(targetIndex).filter(n=>game!.tiles[n]!.owner===myId).sort((a,b)=>game!.tiles[b]!.troops-game!.tiles[a]!.troops);
- if(!adjacent.length)return false;const source=game.tiles[adjacent[0]!]!;const sent=Math.floor(source.troops*percent/100);if(sent<1)return false;
- const defense=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));source.troops-=sent;
- if(sent<=defense){tile.troops=Math.max(0,defense-sent);report('Attack repelled. Try a higher troop ratio.');return false;}
- const defender=game.players.find(p=>p.id===tile.owner);if(defender)defender.score=Math.max(0,defender.score-1);
- tile.owner=myId;tile.troops=Math.max(1,sent-defense-1);const me=game.players.find(p=>p.id===myId);if(me)me.score++;return true;
+function marchPath(from:number,to:number){
+ if(!game)return[];let x0=from%game.width,y0=Math.floor(from/game.width);const x1=to%game.width,y1=Math.floor(to/game.width);
+ const dx=Math.abs(x1-x0),sx=x0<x1?1:-1,dy=-Math.abs(y1-y0),sy=y0<y1?1:-1;let err=dx+dy,steps=0;const path:number[]=[];
+ while(steps<MAX_MARCH_DISTANCE){if(x0===x1&&y0===y1)break;const e2=2*err;if(e2>=dy){err+=dy;x0+=sx;}if(e2<=dx){err+=dx;y0+=sy;}steps++;if(x0<0||x0>=game.width||y0<0||y0>=game.height)break;path.push(y0*game.width+x0);}
+ return path;
 }
+function areAllies(attackerId:string,ownerId:string|null){
+ if(!game||!ownerId||soloMode==='ffa')return false;
+ const attacker=game.players.find(p=>p.id===attackerId),defender=game.players.find(p=>p.id===ownerId);
+ return !!attacker&&!!defender&&attacker.team===defender.team;
+}
+function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,percent:number){
+ if(!game)return 0;
+ const source=game.tiles[sourceIndex],target=game.tiles[targetIndex],attacker=game.players.find(p=>p.id===attackerId);
+ if(!source||!target||!attacker||source.owner!==attackerId||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
+ const distance=Math.hypot(sourceIndex%game.width-targetIndex%game.width,Math.floor(sourceIndex/game.width)-Math.floor(targetIndex/game.width));
+ if(distance>MAX_MARCH_DISTANCE){if(attackerId==='human')report('That destination is too far. Choose a closer frontier (up to '+MAX_MARCH_DISTANCE+' tiles).');return 0;}
+ if(areAllies(attackerId,target.owner)){if(attackerId==='human')report('🤝 That territory belongs to an ally.');return 0;}
+ const sent=Math.floor(source.troops*Math.max(1,Math.min(100,percent))/100);
+ if(sent<1){if(attackerId==='human')report('⚔ Not enough troops in the selected territory.');return 0;}
+ source.troops-=sent;let remaining=sent,captured=0,lastCaptured=-1;
+ for(const step of marchPath(sourceIndex,targetIndex)){
+  const tile=game.tiles[step]!;
+  if(tile.terrain==='water'||tile.terrain==='mountain')break;
+  if(tile.owner===attackerId)continue;
+  if(areAllies(attackerId,tile.owner))break;
+  const defense=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
+  if(remaining<=defense){tile.troops=Math.max(0,defense-remaining);remaining=0;break;}
+  if(tile.owner){const defender=game.players.find(p=>p.id===tile.owner);if(defender)defender.score=Math.max(0,defender.score-1);}
+  remaining-=defense+1;tile.owner=attackerId;tile.troops=0;attacker.score++;captured++;lastCaptured=step;
+ }
+ if(lastCaptured>=0)game.tiles[lastCaptured]!.troops+=remaining;
+ if(attackerId==='human')report(captured?'⚔ Army marched forward and captured '+captured+' territory tile'+(captured===1?'':'s')+'.':'🛡 Army was stopped. Send more troops or choose another direction.');
+ return captured;
+}
+function localClaim(sourceIndex:number,targetIndex:number,percent:number){return localMarch('human',sourceIndex,targetIndex,percent)>0;}
 const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80};
 function localBuild(index:number,type:BuildingType){
  if(!game)return false;const tile=game.tiles[index],me=game.players.find(p=>p.id===myId);if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
@@ -356,14 +385,39 @@ function localBuild(index:number,type:BuildingType){
 function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
 function localRecruit(player:Player){if(!game||(!soloInfiniteGold&&player.gold<25))return;const home=game.tiles[player.home];if(home?.owner===player.id){if(!soloInfiniteGold)player.gold-=25;home.troops+=15;}}
 function botTurn(bot:Player){
- if(!game)return;const owned=game.tiles.map((t,i)=>t.owner===bot.id?i:-1).filter(i=>i>=0);if(!owned.length)return;
- const opts=owned.flatMap(i=>neighborsLocal(i).filter(n=>{const owner=game!.players.find(p=>p.id===game!.tiles[n]!.owner);return game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain'&&game!.tiles[n]!.terrain!=='water'&&!(soloMode!=='ffa'&&owner&&owner.team===bot.team);}).map(n=>({source:i,target:n,t:game!.tiles[n]!})));
- const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
- opts.sort((a,b)=>{const score=(o:typeof opts[number])=>(o.t.owner?15:8)+(o.t.troops*.35)+(neighborsLocal(o.target).filter(n=>game!.tiles[n]!.owner!==bot.id).length*2)+(personality==='builder'&&!o.t.owner?5:0)+(personality==='raider'&&o.t.owner?7:0);return score(b)-score(a);});
- const pick=opts.find(o=>o.source!==bot.home||game!.tiles[o.source]!.troops>12);if(!pick)return;
- const source=game.tiles[pick.source]!,difficultyForce:Record<typeof soloDifficulty,number>={relaxed:.35,balanced:.62,intense:.8,impossible:.94},personalityScale=personality==='warden'?.75:personality==='raider'?1.12:.9,send=Math.max(1,Math.floor(source.troops*difficultyForce[soloDifficulty]*personalityScale));if(send<=pick.t.troops)return;
- const tile=pick.t,defender=game.players.find(p=>p.id===tile.owner);source.troops-=send;const survivors=send-(tile.owner?tile.troops:0)-1;if(defender)defender.score=Math.max(0,defender.score-1);tile.owner=bot.id;tile.troops=Math.max(1,survivors);bot.score++;
- if(bot.gold>=25&&personality==='warden'&&game.tick%2===0)localRecruit(bot);
+ if(!game)return false;
+ const owned:number[]=[];for(let i=0;i<game.tiles.length;i++)if(game.tiles[i]!.owner===bot.id&&game.tiles[i]!.troops>=8)owned.push(i);
+ if(!owned.length)return false;
+ const directions:[number,number][]=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+ const stride=Math.max(1,Math.floor(owned.length/90)),candidates:{source:number;target:number;score:number}[]=[];
+ for(let oi=0;oi<owned.length;oi+=stride){
+  const source=owned[oi]!,sx=source%game.width,sy=Math.floor(source/game.width),army=game.tiles[source]!.troops;
+  for(const [dx,dy] of directions){
+   for(const distance of [5,9,13,MAX_MARCH_DISTANCE]){
+    const x=sx+dx*distance,y=sy+dy*distance;if(x<0||y<0||x>=game.width||y>=game.height)continue;
+    const target=y*game.width+x;if(game.tiles[target]!.owner===bot.id)continue;
+    const route=marchPath(source,target);let reachable=0,score=0;
+    for(const step of route){
+     const tile=game.tiles[step]!;
+     if(tile.terrain==='water'||tile.terrain==='mountain'||areAllies(bot.id,tile.owner))break;
+     if(tile.owner===bot.id)continue;
+     reachable++;
+     if(tile.owner){score+=7-Math.min(6,tile.troops*.28);const defender=game.players.find(p=>p.id===tile.owner);if(defender&&defender.home===step)score+=5;}
+     else score+=3.7;
+     if(reachable>=12)break;
+    }
+    if(!reachable)continue;
+    score+=reachable*1.5+Math.random()*1.8-distance*.035-Math.max(0,18-army)*.28;
+    candidates.push({source,target,score});
+   }
+  }
+ }
+ candidates.sort((a,b)=>b.score-a.score);if(!candidates.length)return false;
+ const pick=candidates[Math.floor(Math.random()*Math.min(3,candidates.length))]!;
+ const sendPercent:Record<typeof soloDifficulty,number>={relaxed:48,balanced:66,intense:82,impossible:94};
+ const captured=localMarch(bot.id,pick.source,pick.target,sendPercent[soloDifficulty]);
+ if(captured&&bot.gold>=25&&game.tick%2===0)localRecruit(bot);
+ return captured>0;
 }
 function botBuild(bot:Player){
  if(!game)return;
@@ -382,7 +436,7 @@ function botBuild(bot:Player){
   eligible.tile.buildings.push({type,level:1});if(!soloInfiniteGold)bot.gold-=cost;return;
  }
 }
-function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=soloInfiniteGold?9999:Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(soloInfiniteTroops)for(const t of land)t.troops=9999;else if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;botTurn(bot);if(soloDifficulty==='intense'||soloDifficulty==='impossible')botTurn(bot);if(soloDifficulty==='impossible'&&game.tick%2===0)botTurn(bot);if(game.tick%3===0)botBuild(bot);}render();checkSoloWinner();}
+function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=soloInfiniteGold?9999:Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(soloInfiniteTroops&&p.id==='human')for(const t of land)t.troops=9999;else if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const botPlayer of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;const actions=soloDifficulty==='impossible'?3:soloDifficulty==='intense'?2:1;for(let a=0;a<actions;a++)botTurn(botPlayer);if(game.tick%3===0)botBuild(botPlayer);}render();checkSoloWinner();}
 function applyCamera(){canvas.style.transformOrigin='center center';canvas.style.transform='translate3d('+cameraX+'px,'+cameraY+'px,0) scale('+cameraZoom+')';}
 function resetCamera(){cameraZoom=1;cameraX=0;cameraY=0;applyCamera();}
 function zoomCamera(delta:number){cameraZoom=Math.max(1,Math.min(2.8,cameraZoom+delta));applyCamera();}
@@ -416,12 +470,12 @@ function fieldRank(score:number){
 }
 function updateStats(){
  const current=game,me=current?.players.find(p=>p.id===myId),owned=current?.tiles.filter(t=>t.owner===myId).length||0;
- el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);el('rank-label').textContent=fieldRank(me?.score||0);el('online').textContent=String(current?.players.filter(p=>p.connected).length||0);
+ el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);el('rank-label').textContent=fieldRank(me?.score||0);el('online').textContent=(mode==='single'?String(current?.players.length||0):String(current?.players.filter(p=>p.connected).length||0))+'/'+(current?.capacity||50);el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
  el('available-troops').textContent=selectedSource>=0&&current?.tiles[selectedSource]?.owner===myId?String(current.tiles[selectedSource]!.troops):'—';
  const source=current&&selectedSource>=0?current.tiles[selectedSource]:null;
  el('selected-info').textContent=source?'TROOPS '+source.troops+' · '+(source.terrain||'land').toUpperCase()+' · '+(source.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
- el('tile-info').textContent=activeBuilding?'BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'CLICK ADJACENT LAND TO EXPAND · SELECTED '+(selectedSource>=0?'TILE '+selectedSource:'NONE');
- el('tile-title').textContent=activeBuilding?'CONSTRUCTION MODE':'WORLD MAP';
+ el('tile-info').textContent=activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ SELECT A SOURCE · CLICK A DESTINATION TO MARCH · '+(selectedSource>=0?'SOURCE '+selectedSource:'NO SOURCE');
+ el('tile-title').textContent=activeBuilding?'🏗 CONSTRUCTION MODE':'🌎 '+(current?.mapName||'WORLD MAP');
  el('turn').textContent=String(current?.tick||0);
  if(mode==='single'&&soloLengthMinutes>0&&current){const remaining=Math.max(0,soloLengthMinutes*15-current.tick)*4;el('time-left').textContent=Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');}else el('time-left').textContent='∞';
   const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Markets add income; Farms boost troop growth.';
@@ -432,11 +486,13 @@ function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp
 canvas.addEventListener('click',event=>{
  if(!game)return;const index=tileAt(event);if(index<0)return;const tile=game.tiles[index]!;
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
- if(tile.owner===myId){selectedSource=index;report('Territory selected. Click adjacent neutral or enemy land to expand.');updateStats();draw();return;}
- const adjacent=neighborsLocal(index).filter(n=>game!.tiles[n]!.owner===myId);
- if(!adjacent.length){selectedSource=-1;updateStats();draw();return;}
- if(mode==='single'){const won=localClaim(index,forcePercent);report(won?'Territory captured!':'Attack failed or was repelled. Try sending more troops.');render();checkSoloWinner();}
- else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',tile:index,percent:forcePercent}));
+ if(tile.owner===myId){selectedSource=index;report('🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.');updateStats();draw();return;}
+ const sourceIndex=selectedSource>=0&&game.tiles[selectedSource]?.owner===myId?selectedSource:-1;
+ if(sourceIndex<0){report('🧭 Select one of your territories first, then choose a destination.');return;}
+ const distance=Math.hypot(sourceIndex%game.width-index%game.width,Math.floor(sourceIndex/game.width)-Math.floor(index/game.width));
+ if(distance>MAX_MARCH_DISTANCE){report('Destination is too far. Choose a point within '+MAX_MARCH_DISTANCE+' tiles.');return;}
+ if(mode==='single'){localClaim(sourceIndex,index,forcePercent);render();checkSoloWinner();}
+ else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',source:sourceIndex,tile:index,percent:forcePercent}));
 });
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
