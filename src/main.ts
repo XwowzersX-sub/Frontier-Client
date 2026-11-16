@@ -126,6 +126,8 @@ function startSinglePlayer(){
  soloMode=(el('solo-mode') as HTMLSelectElement).value as typeof soloMode;
  soloMap=(el('solo-map') as HTMLSelectElement).value;
  soloBotCount=Number((el('solo-bots') as HTMLSelectElement).value);
+ const teamMinimum=soloMode==='duos'?3:soloMode==='trios'?5:soloMode==='squads'?7:0;
+ if(soloBotCount<teamMinimum){soloBotCount=teamMinimum;(el('solo-bots') as HTMLSelectElement).value=String(teamMinimum);}
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
  soloWinPercent=Number((el('solo-win') as HTMLSelectElement).value);
  const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f','#57b78a','#d77eb0','#78aeb5','#c18b62'];
@@ -165,18 +167,19 @@ function checkSoloWinner(){
   const team=soloMode==='ffa'?game.players.indexOf(p):(p.team??0);
   const current=groups.get(team)||{name:p.name,id:p.id,land:0};
   current.land+=game.tiles.filter(t=>t.owner===p.id).length;
-  if(p.id==='human'||(!current.name&&p.name))current.name=p.name;
-  if(p.id==='human')current.id=p.id;
+  if(p.id==='human'){current.name=p.name;current.id=p.id;}
   groups.set(team,current);
  }
- const winner=[...groups.values()].find(group=>group.land/playable>=soloWinPercent/100);
- if(!winner)return;
+ const winningEntry=[...groups.entries()].find(([,group])=>group.land/playable>=soloWinPercent/100);
+ if(!winningEntry)return;
+ const [winningTeam,winner]=winningEntry;
+ const human=game.players.find(p=>p.id==='human');
+ const isPlayerTeam=soloMode==='ffa'?winner.id==='human':(human?.team??0)===winningTeam;
  matchWinner=winner.name;soloPaused=true;if(localTimer)clearInterval(localTimer);
- const isPlayerTeam=soloMode==='ffa'?winner.id==='human':game.players.some(p=>p.id==='human'&&(p.team??0)===[...groups.entries()].find(([,g])=>g===winner)?.[0]);
  el('match-result').textContent=isPlayerTeam?'VICTORY':'DEFEAT';
- el('match-result-detail').textContent=(soloMode==='ffa'?winner.name:'Team '+(game.players.find(p=>p.id===winner.id)?.team!==undefined?(game.players.find(p=>p.id===winner.id)!.team!+1):1))+' reached '+soloWinPercent+'% of playable land.';
+ el('match-result-detail').textContent=(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+' reached '+soloWinPercent+'% of playable land.';
  el('match-banner').classList.remove('hidden');
- report(winner.name+' and their team won the campaign. Start a new match to play again.');
+ report(winner.name+(soloMode==='ffa'?'':' and their allies')+' won the campaign. Start a new match to play again.');
 }
 el('pause-solo').addEventListener('click',()=>{
  if(mode!=='single'||matchWinner)return;
