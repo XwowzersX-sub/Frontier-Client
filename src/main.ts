@@ -13,26 +13,42 @@ type GameState = { width: number; height: number; tiles: Tile[]; players: Player
 let socket: WebSocket | null = null, game: GameState | null = null, myId = '', selected = -1, reconnecting = false, mode: 'single' | 'multi' = 'single', localTimer: ReturnType<typeof setInterval> | null = null;
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
-<header><div class="brand">✦ PIXEL FRONTIER <small>REALM CONQUEST</small></div><div class="right-head"><span id="connection" class="connection">● OFFLINE</span><button id="account" class="account">GUEST</button></div></header>
-<main>
- <aside class="panel">
-  <div class="eyebrow">COMMANDER TERMINAL</div><h1>Claim your<br><em>frontier.</em></h1>
-  <div class="auth-box"><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password (6+ characters)" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your commander identity.</p></div>
-  <div class="mode-picker"><button id="single-mode" class="primary">SINGLE PLAYER</button><button id="multi-mode" class="secondary">MULTIPLAYER</button></div><button id="connect" class="primary connect-btn hidden">WAKE / CONNECT TO MATCH</button>
-  <div class="section-title">YOUR EMPIRE</div>
-  <div class="stats"><div><small>GOLD</small><b id="gold">—</b></div><div><small>TERRITORY</small><b id="territory">—</b></div><div><small>SCORE</small><b id="score">—</b></div></div>
-  <div class="section-title">ORDERS</div><button id="expand" class="primary" disabled>EXPAND SELECTED TILE <span>−4g</span></button><button id="recruit" class="secondary" disabled>RECRUIT 5 TROOPS <span>−25g</span></button>
-  <p class="hint">Select a neighboring neutral tile, then expand. Mountains cannot be occupied. Captures require more nearby troops than the defending garrison.</p>
-  <div class="section-title">FIELD REPORT</div><div id="report" class="report">Connect to the server to enter the match.</div>
- </aside>
- <section class="battlefield">
-  <div class="game-top"><div><div class="eyebrow">LIVE THEATER</div><strong>SECTOR 07 <span>·</span> THE OUTER REACH</strong></div><div class="online"><b id="online">0</b><small>COMMANDERS</small></div></div>
-  <div class="resource-strip"><span>TURN <b id="turn">0</b></span><span>GOLD INCOME <b id="income">+1 / 5s</b></span><span>MAP <b>30 × 20</b></span></div>
-  <div class="map-wrap"><canvas id="map" width="900" height="600" aria-label="Pixel Frontier territory map"></canvas></div>
-  <div class="map-foot"><span id="tile-info">SELECT A TILE TO INSPECT</span><span>CLICK A TILE · ISSUE AN ORDER</span></div>
-  <div class="lower"><div><div class="section-title">COMMANDERS</div><div id="leaderboard" class="leaderboard"><span class="muted">Waiting for players…</span></div></div><div><div class="section-title">HOW TO PLAY</div><p class="rules">Expand from your borders to claim land. Each territory adds gold income. Recruit troops at your home tile. Build a larger empire than the other commanders.</p></div></div>
- </section>
-</main><footer>PIXEL FRONTIER <span>PROTOTYPE BUILD · MATCH STATE RESETS WHEN THE SERVER RESTARTS</span></footer>`;
+<div id="main-menu" class="screen menu-screen">
+ <div class="menu-brand">PIXEL <span>FRONTIER</span><small>THE WORLD IS YOURS TO CLAIM</small></div>
+ <div class="menu-card">
+  <div class="eyebrow">COMMANDER ACCESS</div>
+  <h1>Choose your<br><em>frontier.</em></h1>
+  <label class="field-label" for="nickname">COMMANDER NAME</label><input id="nickname" maxlength="18" placeholder="Enter nickname" autocomplete="nickname">
+  <div class="menu-actions"><button id="menu-single" class="primary big">SINGLE PLAYER <small>PLAY AGAINST AI COMMANDERS</small></button><button id="menu-multi" class="secondary big">MULTIPLAYER <small>JOIN THE ONLINE WORLD</small></button></div>
+  <details class="account-details"><summary>ACCOUNT / SIGN IN</summary><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your account identity.</p></details>
+  <button id="menu-settings" class="text-button">⚙ SETTINGS</button>
+ </div><div class="menu-version">PIXEL FRONTIER · REALM CONQUEST · BETA</div>
+</div>
+<div id="settings-screen" class="screen modal-screen hidden"><div class="settings-card"><div class="modal-head"><div><div class="eyebrow">GAME OPTIONS</div><h2>SETTINGS</h2></div><button id="settings-close" class="secondary">CLOSE ✕</button></div>
+ <label class="setting-row">PIXEL SCALE <select id="pixel-scale"><option value="1">Crisp</option><option value="2" selected>Chunky</option><option value="3">Extra chunky</option></select></label>
+ <label class="setting-row">MAP GRID <input id="grid-toggle" type="checkbox" checked></label>
+ <label class="setting-row">SOUND EFFECTS <input id="sound-toggle" type="checkbox"></label>
+ <label class="setting-row">SHOW TROOP COUNTS <input id="count-toggle" type="checkbox" checked></label>
+ <button id="settings-save" class="primary">SAVE SETTINGS</button>
+ </div></div>
+<div id="game-screen" class="game-screen hidden">
+ <header><div class="brand">✦ PIXEL FRONTIER <small>REALM CONQUEST</small></div><div class="head-center"><span id="connection" class="connection">● OFFLINE</span><b id="commander-label">COMMANDER</b></div><div class="right-head"><button id="game-settings" class="secondary">⚙</button><button id="main-menu" class="account">MENU</button></div></header>
+ <main class="battle-layout">
+  <section class="battlefield">
+   <div class="game-top"><div><div class="eyebrow">LIVE THEATER</div><strong>SECTOR 07 <span>·</span> THE OUTER REACH</strong></div><div class="top-stats"><div><small>TURN</small><b id="turn">0</b></div><div><small>LAND</small><b id="territory">0</b></div><div><small>INCOME</small><b id="income">+0</b></div><div><small>COMMANDERS</small><b id="online">0</b></div></div></div>
+   <div class="map-wrap"><canvas id="map" width="1500" height="1000" aria-label="Pixel Frontier world map"></canvas></div>
+   <div class="map-foot"><span id="tile-info">SELECT A TILE · DRAG FROM YOUR LAND TO EXPAND</span><span id="score">SCORE 0</span></div>
+   <div class="bottom-hud">
+    <div class="hud-commander"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="gold-stat"><small>GOLD</small><b id="gold">0</b></div></div>
+    <div class="troop-control"><small>DEPLOY TROOPS</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">ALL IN</button></div><span id="available-troops">Select your territory</span></div>
+    <div class="action-controls"><button id="expand" class="primary" disabled>⚑ EXPAND / ATTACK</button><button id="recruit" class="secondary" disabled>＋ RECRUIT</button></div>
+   </div>
+   <div class="hint-bar">SELECT ONE OF YOUR TERRITORIES, THEN DRAG ACROSS THE MAP TO DRAW AN EXPANSION ROUTE. TROOPS FIGHT FOR EACH TILE.</div>
+  </section>
+  <aside class="right-panel"><div class="section-title">COMMANDERS</div><div id="leaderboard" class="leaderboard"></div><div class="section-title">FIELD REPORT</div><div id="report" class="report">Choose a mode to enter the frontier.</div><div class="section-title">SELECTED TILE</div><div id="selected-info" class="selected-info">No tile selected</div></aside>
+ </main>
+</div>`;
+
 const el = (id: string) => document.getElementById(id)!;
 const report = (text: string) => { el('report').textContent = text; };
 const setConnection = (text: string, good = false) => { el('connection').textContent = '● ' + text; el('connection').className = 'connection ' + (good ? 'good' : ''); };
