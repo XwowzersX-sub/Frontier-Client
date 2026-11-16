@@ -68,7 +68,8 @@ async function connect() {
    if (response.ok) {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
-    socket = new WebSocket(serverUrl.replace(/^http/, 'ws') + '/ws' + (token ? '?token=' + encodeURIComponent(token) : ''));
+    const protocols = token ? ['frontier', 'auth.' + token] : ['frontier'];
+    socket = new WebSocket(serverUrl.replace(/^http/, 'ws') + '/ws', protocols);
     socket.onopen = () => { setConnection('CONNECTED', true); report('Connected. Entering the frontier…'); const name = data.session?.user.email?.split('@')[0] || 'Commander'; socket?.send(JSON.stringify({ type: 'join', name })); reconnecting = false; };
     socket.onmessage = event => {
      const packet = JSON.parse(event.data);
