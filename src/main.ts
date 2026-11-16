@@ -204,7 +204,7 @@ el('speed-solo').addEventListener('click',()=>{
  resetSoloTimer();
 });
 el('new-solo').addEventListener('click',()=>{startSinglePlayer();});
-type SoloSave = {version:1;game:GameState;soloMode:typeof soloMode;soloMap:string;soloBotCount:number;soloDifficulty:typeof soloDifficulty;soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number};
+type SoloSave = {version:1;game:GameState;soloMode:'ffa'|'duos'|'trios'|'squads';soloMap:string;soloBotCount:number;soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible';soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number};
 function makeSoloSave():SoloSave|null{
  if(!game||mode!=='single')return null;
  return {version:1,game:JSON.parse(JSON.stringify(game)) as GameState,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent,soloLengthMinutes,soloSpeed};
