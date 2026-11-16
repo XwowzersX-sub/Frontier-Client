@@ -521,7 +521,95 @@ function botBuild(bot:Player,ownedInput?:number[]){
   if(!soloInfiniteGold)bot.gold-=cost;return;
  }
 }
-function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=(soloInfiniteGold&&p.id==='human')?9999:Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(soloInfiniteTroops&&p.id==='human')for(const t of land)t.troops=9999;else if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const botPlayer of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;const actions=soloDifficulty==='impossible'?3:soloDifficulty==='intense'?2:1;for(let a=0;a<actions;a++)botTurn(botPlayer);if(game.tick%3===0)botBuild(botPlayer);}render();checkSoloWinner();}
+function localSeaRoute(from:number,to:number):number[]{
+ if(!game)return[];
+ const starts=neighborsLocal(from).filter(i=>getGameTile(i).terrain==='water');
+ const goals=new Set(neighborsLocal(to).filter(i=>getGameTile(i).terrain==='water'));
+ if(!starts.length||!goals.size)return[];
+ const previous=new Int32Array(game.tiles.length);previous.fill(-2);
+ const queue=new Int32Array(game.tiles.length);let head=0,tail=0,goal=-1;
+ for(const i of starts){previous[i]=-1;queue[tail++]=i;}
+ while(head<tail&&tail<game.tiles.length){
+  const current=queue[head++];if(goals.has(current)){goal=current;break;}
+  for(const next of neighborsLocal(current)){if(previous[next]!==-2||getGameTile(next).terrain!=='water')continue;previous[next]=current;queue[tail++]=next;}
+ }
+ if(goal<0)return[];
+ const path:number[]=[];let at=goal;while(at>=0){path.push(at);at=previous[at]!;}path.reverse();return[from,...path,to];
+}
+function localSendBoat(sourceIndex:number,targetIndex:number){
+ if(!game)return false;
+ const source=getGameTile(sourceIndex),target=getGameTile(targetIndex),me=game.players.find(p=>p.id==='human');
+ if(!me||source.owner!=='human'||!(source.buildings||[]).some(b=>b.type==='port')||!neighborsLocal(sourceIndex).some(n=>getGameTile(n).terrain==='water')){report('🚢 Build a Port on your coast and select it first.');return false;}
+ if(target.owner!==null||target.terrain==='water'||target.terrain==='mountain'||!neighborsLocal(targetIndex).some(n=>getGameTile(n).terrain==='water')){report('🏝 Ferries can only settle an unclaimed coastal tile.');return false;}
+ if(!soloInfiniteGold&&me.gold<60){report('A settlement ferry costs 60 gold.');return false;}
+ const path=localSeaRoute(sourceIndex,targetIndex);if(path.length<3){report('No open sea route reaches that coast.');return false;}
+ if(!soloInfiniteGold)me.gold-=60;
+ game.ships=game.ships||[];game.ships.push({id:'colony-'+game.tick+'-'+Math.random().toString(36).slice(2),owner:'human',x:sourceIndex%game.width,y:Math.floor(sourceIndex/game.width),kind:'colony',from:sourceIndex,to:targetIndex,path,step:0});
+ report('🚢 Settlement ferry launched. It will establish a new coastal settlement when it arrives.');
+ return true;
+}
+function advanceLocalShips(){
+ if(!game)return;
+ const fleet=game.ships||[];
+ for(let i=fleet.length-1;i>=0;i--){
+  const ship=fleet[i] as ShipView & {path?:number[];step?:number;from?:number;to?:number;destinationOwner?:string};
+  if(!ship.path?.length)continue;
+  ship.step=Math.min(ship.path.length-1,(ship.step||0)+8);
+  const pos=ship.path[ship.step]||ship.from||0;ship.x=pos%game.width;ship.y=Math.floor(pos/game.width);
+  if(ship.step>=ship.path.length-1){
+   if(ship.kind==='colony'){
+    const tile=getGameTile(ship.to??pos);
+    if(tile.owner===null&&tile.terrain!=='water'&&tile.terrain!=='mountain'){tile.owner=ship.owner;tile.troops=1;game.tiles[ship.to??pos]=tile;const owner=game.players.find(p=>p.id===ship.owner);if(owner)owner.score++;if(ship.owner==='human')report('🏝 New island settlement established!');}
+   }else if(ship.kind==='trade'){
+    const from=game.players.find(p=>p.id===ship.owner),to=ship.destinationOwner?game.players.find(p=>p.id===ship.destinationOwner):from;
+    if(from)from.gold+=40;if(to&&to.id!==from?.id)to.gold+=40;
+   }
+   fleet.splice(i,1);
+  }
+ }
+ game.ships=fleet;
+}
+function localTick(){
+ if(!game||mode!=='single'||soloPaused||matchWinner)return;
+ game.tick++;
+ const summary=new Map<string,{land:number;troops:number;cityLevels:number;income:number;owned:number[]}>();
+ for(const p of game.players)summary.set(p.id,{land:0,troops:0,cityLevels:0,income:0,owned:[]});
+ for(let i=0;i<game.tiles.length;i++){
+  const tile=game.tiles[i];if(!tile||!tile.owner)continue;
+  const stats=summary.get(tile.owner);if(!stats)continue;
+  stats.land++;stats.troops+=tile.troops;stats.owned.push(i);
+  for(const building of tile.buildings||[]){
+   if(building.type==='city'){stats.cityLevels+=building.level;stats.income+=building.level*2;}
+   if(building.type==='factory')stats.income+=3;
+   if(building.type==='port')stats.income+=2;
+   if(building.type==='market')stats.income+=4;
+  }
+ }
+ for(const p of game.players){
+  const stats=summary.get(p.id)!;const workers=Math.max(0,Math.min(100,Number(p.workerRatio??(p.id==='human'?soloWorkerRatio:30))));
+  const maxTroops=Math.floor(2*(Math.pow(Math.max(1,stats.land),.6)*15+50)+stats.cityLevels*180);
+  p.gold=(soloInfiniteGold&&p.id==='human')?999999:Math.min(999999,p.gold+Math.max(1,Math.floor(stats.land*(.2+workers*.035)))+stats.income);
+  if(soloInfiniteTroops&&p.id==='human'){for(const i of stats.owned){const t=game.tiles[i]!;t.troops=9999;}}
+  else if(game.tick%2===0&&stats.owned.length){
+   const home=game.tiles[p.home]?.owner===p.id?p.home:stats.owned[0]!;
+   const growth=(2+Math.sqrt(stats.troops)*.08)*(1-stats.troops/Math.max(1,maxTroops))*(1-workers/135);
+   const add=Math.max(0,Math.floor(growth));if(add)game.tiles[home]!.troops+=add;
+  }
+ }
+ advanceLocalShips();
+ if(game.tick%20===0&&(game.ships||[]).filter(s=>s.kind==='trade').length<6){
+  const ports:number[]=[];game.tiles.forEach((tile,i)=>{if(tile&&tile.owner&&(tile.buildings||[]).some(b=>b.type==='port'))ports.push(i);});
+  if(ports.length>=2){const a=ports[Math.floor(Math.random()*ports.length)]!,b=ports.find(i=>i!==a);if(b){const path=localSeaRoute(a,b);if(path.length>2){const owner=game.tiles[a]!.owner||'human',targetOwner=game.tiles[b]!.owner||owner;game.ships=game.ships||[];game.ships.push({id:'trade-'+game.tick,owner,x:a%game.width,y:Math.floor(a/game.width),kind:'trade',from:a,to:b,path,step:0,destinationOwner:targetOwner} as any);}}}
+ }
+ for(const botPlayer of game.players.filter(p=>p.id.startsWith('bot-'))){
+  if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;
+  const owned=summary.get(botPlayer.id)?.owned||[];
+  const actions=soloDifficulty==='impossible'?3:soloDifficulty==='intense'?2:1;
+  for(let a=0;a<actions;a++)botTurn(botPlayer,owned);
+  if(game.tick%3===0)botBuild(botPlayer,owned);
+ }
+ render();checkSoloWinner();
+}
 function applyCamera(){draw();requestChunksForView();}
 function resetCamera(){
  cameraZoom=8;
