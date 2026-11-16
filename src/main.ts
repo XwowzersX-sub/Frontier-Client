@@ -134,7 +134,7 @@ async function connect(){
  mode='multi';el('solo-toolbar').classList.add('hidden');el('solo-save-actions').classList.add('hidden');if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
  if(socket?.readyState===WebSocket.OPEN){report('Already connected.');return;}
  setConnection('WAKING SERVER…');report('Waking the online world. Render may take up to a minute.');reconnecting=true;
- for(let attempt=0;attempt<14;attempt++){if(!reconnecting)return;try{const response=await fetch(serverUrl+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});if(response.ok){const {data}=await supabase.auth.getSession();const token=data.session?.access_token;socket=new WebSocket(serverUrl.replace(/^http/,'ws')+'/ws',token?['frontier','auth.'+token]:['frontier']);socket.onopen=()=>{setConnection('ONLINE',true);socket?.send(JSON.stringify({type:'join',name:getNickname(),spawnPreference:(el('start-region') as HTMLSelectElement).value}));reconnecting=false;};socket.onmessage=event=>{const packet=JSON.parse(event.data);if(packet.type==='welcome')myId=packet.id;if(packet.type==='state'){game=packet.state as GameState;render();}if(packet.type==='notice'||packet.type==='error')report(packet.text);};socket.onclose=()=>{if(mode==='multi'){setConnection('DISCONNECTED');report('Connection lost. Return to menu and reconnect.');}};socket.onerror=()=>setConnection('CONNECTION ERROR');return;}}catch{}await new Promise(resolve=>setTimeout(resolve,Math.min(1500*(attempt+1),9000)));}
+ for(let attempt=0;attempt<14;attempt++){if(!reconnecting)return;try{const response=await fetch(serverUrl+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});if(response.ok){const {data}=await supabase.auth.getSession();const token=data.session?.access_token;socket=new WebSocket(serverUrl.replace(/^http/,'ws')+'/ws',token?['frontier','auth.'+token]:['frontier']);socket.onopen=()=>{setConnection('ONLINE',true);socket?.send(JSON.stringify({type:'join',name:getNickname(),spawnPreference:(el('start-region') as HTMLSelectElement).value}));reconnecting=false;};socket.onmessage=event=>{const packet=JSON.parse(event.data);if(packet.type==='welcome')myId=packet.id;if(packet.type==='state')handleNetworkState(packet.state as GameState);if(packet.type==='chunk')handleNetworkChunk(packet);if(packet.type==='notice'||packet.type==='error')report(packet.text);};socket.onclose=()=>{if(mode==='multi'){setConnection('DISCONNECTED');report('Connection lost. Return to menu and reconnect.');}};socket.onerror=()=>setConnection('CONNECTION ERROR');return;}}catch{}await new Promise(resolve=>setTimeout(resolve,Math.min(1500*(attempt+1),9000)));}
  reconnecting=false;setConnection('SERVER UNAVAILABLE');report('Could not wake server. Check Render and try again.');
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
@@ -147,6 +147,37 @@ const WORLD_MAPS=[
 ];
 const SPAWN_POINTS:Record<string,[number,number]>={northwest:[.16,.16],north:[.5,.12],northeast:[.84,.16],west:[.12,.5],center:[.5,.5],east:[.88,.5],southwest:[.16,.84],south:[.5,.88],southeast:[.84,.84]};
 function mapTitle(id:string){return WORLD_MAPS.find(m=>m.id===id)?.name||'Random World';}
+function handleNetworkState(incoming:GameState){
+ if(!incoming||!Number.isInteger(incoming.width)||!Number.isInteger(incoming.height))return;
+ const newWorld=!game||game.width!==incoming.width||game.height!==incoming.height||game.mapSeed!==incoming.mapSeed;
+ if(newWorld){
+  game={...incoming,tiles:new Array<Tile>(incoming.width*incoming.height),ships:incoming.ships||[]};
+  requestedChunks.clear();receivedChunks.clear();selectedSource=-1;boatMode=false;
+  const me=incoming.players.find(p=>p.id===myId);
+  cameraZoom=8;cameraX=me&&me.home>=0?me.home%incoming.width:incoming.width/2;
+  cameraY=me&&me.home>=0?Math.floor(me.home/incoming.width):incoming.height/2;
+ }else if(game){
+  game.players=incoming.players;game.tick=incoming.tick;game.round=incoming.round;game.mapName=incoming.mapName;game.mapSeed=incoming.mapSeed;game.playable=incoming.playable;game.capacity=incoming.capacity;game.ships=incoming.ships||[];
+  for(const [index,tile] of incoming.updates||[])if(index>=0&&index<game.tiles.length)game.tiles[index]=tile;
+ }
+ setConnection('ONLINE',true);draw();requestChunksForView();updateStats();
+}
+function handleNetworkChunk(packet:any){
+ if(!game||!Array.isArray(packet.items))return;
+ for(const item of packet.items)if(item&&Number.isInteger(item.i)&&item.tile&&item.i>=0&&item.i<game.tiles.length)game.tiles[item.i]=item.tile as Tile;
+ const key=packet.cx+':'+packet.cy;receivedChunks.add(key);requestedChunks.delete(key);render();
+}
+function requestChunksForView(){
+ if(mode!=='multi'||!game||socket?.readyState!==WebSocket.OPEN)return;
+ const width=canvas.clientWidth||window.innerWidth,height=canvas.clientHeight||window.innerHeight;
+ const halfW=width/(2*cameraZoom),halfH=height/(2*cameraZoom);
+ const minX=Math.max(0,Math.floor((cameraX-halfW)/CHUNK_SIZE)),maxX=Math.min(Math.ceil(game.width/CHUNK_SIZE)-1,Math.floor((cameraX+halfW)/CHUNK_SIZE));
+ const minY=Math.max(0,Math.floor((cameraY-halfH)/CHUNK_SIZE)),maxY=Math.min(Math.ceil(game.height/CHUNK_SIZE)-1,Math.floor((cameraY+halfH)/CHUNK_SIZE));
+ const list:{x:number;y:number;d:number}[]=[];
+ for(let cy=minY;cy<=maxY;cy++)for(let cx=minX;cx<=maxX;cx++){const key=cx+':'+cy;if(!receivedChunks.has(key)&&!requestedChunks.has(key))list.push({x:cx,y:cy,d:Math.hypot((cx+.5)*CHUNK_SIZE-cameraX,(cy+.5)*CHUNK_SIZE-cameraY)});}
+ list.sort((a,b)=>a.d-b.d);const take=list.slice(0,36);
+ if(take.length){for(const v of take)requestedChunks.add(v.x+':'+v.y);socket.send(JSON.stringify({type:'chunks',chunks:take.map(v=>({x:v.x,y:v.y}))}));}
+}
 function terrainAt(x:number,y:number,mapId:string,seed:number):Tile['terrain']{
  const nx=(x-WORLD_WIDTH/2)/(WORLD_WIDTH/2),ny=(y-WORLD_HEIGHT/2)/(WORLD_HEIGHT/2);
  const wave=Math.sin(x*.055+seed)*.42+Math.cos(y*.073-seed*.7)*.36+Math.sin((x+y)*.031+seed*1.4)*.27+Math.cos((x-y)*.039-seed)*.2;
