@@ -168,6 +168,12 @@ function handleNetworkChunk(packet:any){
  for(const item of packet.items)if(item&&Number.isInteger(item.i)&&item.tile&&item.i>=0&&item.i<game.tiles.length)game.tiles[item.i]=item.tile as Tile;
  const key=packet.cx+':'+packet.cy;receivedChunks.add(key);requestedChunks.delete(key);render();requestChunksForView();
 }
+function requestChunkForTile(index:number){
+ if(mode!=='multi'||!game||socket?.readyState!==WebSocket.OPEN)return;
+ const cx=Math.floor((index%game.width)/CHUNK_SIZE),cy=Math.floor(Math.floor(index/game.width)/CHUNK_SIZE),key=cx+':'+cy;
+ if(receivedChunks.has(key)||requestedChunks.has(key))return;
+ requestedChunks.add(key);socket.send(JSON.stringify({type:'chunks',chunks:[{x:cx,y:cy}]}));
+}
 function requestChunksForView(){
  if(mode!=='multi'||!game||socket?.readyState!==WebSocket.OPEN)return;
  const width=canvas.clientWidth||window.innerWidth,height=canvas.clientHeight||window.innerHeight;
@@ -743,10 +749,10 @@ canvas.addEventListener('click',event=>{
  if(mode==='multi'&&!game.tiles[index]){requestChunkForTile(index);report('🗺 Loading this section of the map…');return;}
  const tile=mode==='single'?getGameTile(index):game.tiles[index]!;
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
- if(tile.owner===myId&&!boatMode){
+ if(tile.owner===myId){
   selectedSource=index;hoverTile=-1;
   const isPort=(tile.buildings||[]).some(b=>b.type==='port');
-  report(isPort?'⚓ Port selected. Activate SETTLE ISLAND to dispatch a ferry.':'🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.');
+  report(boatMode?(isPort?'⚓ Port selected. Now click an unclaimed coastal tile to send a ferry.':'🚢 Select a territory with a Port to launch a ferry.'):(isPort?'⚓ Port selected. You can manage its sea routes.':'🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.'));
   updateStats();draw();return;
  }
  const sourceIndex=selectedSource>=0&&getGameTile(selectedSource).owner===myId?selectedSource:-1;
@@ -766,6 +772,24 @@ canvas.addEventListener('click',event=>{
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
 document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.addEventListener('click',()=>{activeBuilding=button.dataset.building as BuildingType;document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Build mode: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your territories.');updateStats();}));
+el('worker-ratio').addEventListener('input',()=>{
+ soloWorkerRatio=Number((el('worker-ratio') as HTMLInputElement).value);
+ el('worker-ratio-label').textContent=soloWorkerRatio+'%';
+ const me=game?.players.find(p=>p.id===myId);if(me)me.workerRatio=soloWorkerRatio;
+ if(mode==='multi'&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'workers',ratio:soloWorkerRatio}));
+ updateStats();
+});
+el('boat-mode').addEventListener('click',()=>{
+ if(!game)return;
+ if(boatMode){boatMode=false;report('🚢 Ferry mode cancelled.');}
+ else{
+  const source=selectedSource>=0?getGameTile(selectedSource):null;
+  if(!source||source.owner!==myId||!(source.buildings||[]).some(b=>b.type==='port')){
+   boatMode=true;report('🚢 Ferry mode on. Select one of your Port territories, then click an unclaimed coast.');
+  }else{boatMode=true;report('🚢 Port selected. Click an unclaimed coastal tile to dispatch a settlement ferry.');}
+ }
+ activeBuilding=null;updateStats();draw();
+});
 el('recruit').addEventListener('click',()=>{if(mode==='single'&&game){const p=game.players.find(v=>v.id===myId);if(p)localRecruit(p);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'recruit'}));});
 function sendQuickChat(message:string){
  const clean=message.split('').map((ch:string)=>{const code=ch.charCodeAt(0);return code<32||code===127?' ':ch;}).join('').trim().slice(0,80);if(!clean)return;
@@ -785,7 +809,7 @@ canvas.addEventListener('pointerup',event=>{if(event.pointerId===cameraPointer){
 canvas.addEventListener('pointercancel',()=>{cameraDragging=false;cameraStart=null;});canvas.addEventListener('pointerleave',()=>{hoverTile=-1;if(selectedSource>=0)draw();});
 canvas.addEventListener('contextmenu',event=>{event.preventDefault();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');});
 window.addEventListener('keydown',event=>{
- if(event.key==='Escape'){activeBuilding=null;updateStats();draw();return;}
+ if(event.key==='Escape'){activeBuilding=null;boatMode=false;updateStats();draw();return;}
  if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement||document.activeElement instanceof HTMLSelectElement)return;
  if(event.code==='Space'&&mode==='single'&&!matchWinner){event.preventDefault();el('pause-solo').click();return;}
  if(event.key.toLowerCase()==='c'){resetCamera();return;}
