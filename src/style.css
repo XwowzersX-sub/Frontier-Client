@@ -46,3 +46,21 @@ body{background:#091219;color:#e8eee9}
 
 .weapon-grid{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.weapon-grid button{display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:96px;margin:0;padding:9px 10px;background:#47352c;border:1px solid #a17451;color:#ffe9c5;font:8px 'DM Mono';cursor:pointer}.weapon-grid button:hover{background:#654a39}.weapon-grid button small{color:#e9bd77;font-size:7px}.weapon-grid button b{color:#b9e0b7;font-size:8px}.dock-hint#weapon-hint{max-width:160px}
 @media(max-width:600px){.weapon-grid{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.weapon-grid button{min-width:0;padding:7px 4px;font-size:7px}.dock-hint#weapon-hint{max-width:none}}
+
+
+/* Expanded solo lobby and campaign controls */
+.match-setup{margin-top:14px;padding:12px 13px;background:#0d1920;border:1px solid #41565b;color:#e6ece3}
+.match-setup summary{cursor:pointer;list-style:none;font:700 9px 'DM Mono';letter-spacing:1.5px;color:#e8c76e}
+.match-setup summary::-webkit-details-marker{display:none}
+.match-setup summary:after{content:'＋';float:right;color:#9eb3a7}
+.match-setup[open] summary:after{content:'−'}
+.setup-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:13px}
+.setup-grid label{display:flex;flex-direction:column;gap:5px;color:#98aaa1;font:8px 'DM Mono';letter-spacing:.7px}
+.setup-grid select{width:100%;padding:9px 8px;background:#17272d;border:1px solid #52696a;color:#f2eddb;font:9px 'DM Mono';outline:none}
+.setup-grid select:focus{border-color:#e8c76e}
+.solo-toolbar{display:flex;gap:5px}
+.match-banner{position:absolute;z-index:11;top:27%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:9px;min-width:min(350px,85vw);padding:24px 32px;background:#111e26f2;border:1px solid #e8c76e;box-shadow:0 14px 60px #000b;text-align:center;backdrop-filter:blur(9px)}
+.match-banner b{font:800 35px 'Barlow Condensed';letter-spacing:3px;color:#e8c76e}
+.match-banner span{font:10px 'DM Mono';color:#d9e1d8}
+.match-banner button{margin-top:7px}
+@media(max-width:600px){.match-setup{padding:9px}.setup-grid{gap:7px}.setup-grid select{padding:8px 5px;font-size:8px}.solo-toolbar{grid-column:1/-1;grid-row:2;justify-content:center}.world-actions{display:flex;flex-wrap:wrap;justify-content:flex-end}.match-banner{top:24%;padding:18px 22px}.match-banner b{font-size:27px}}
