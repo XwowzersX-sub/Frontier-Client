@@ -701,31 +701,60 @@ function fieldRank(score:number){
  return 'IRON';
 }
 function updateStats(){
- const current=game,me=current?.players.find(p=>p.id===myId),owned=current?.tiles.filter(t=>t.owner===myId).length||0;
- const armyTiles=current?.tiles.filter(t=>t.owner===myId)||[];
- const troopCurrent=armyTiles.reduce((sum,t)=>sum+t.troops,0);
- const troopMaximum=armyTiles.reduce((sum,t)=>sum+99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50,0);
+ const current=game,me=current?.players.find(p=>p.id===myId);
+ let owned=0,troopCurrent=0,cityLevels=0,portCount=0;
+ current?.tiles.forEach(tile=>{
+  if(!tile||tile.owner!==myId)return;
+  owned++;troopCurrent+=tile.troops;
+  for(const building of tile.buildings||[]){if(building.type==='city')cityLevels+=building.level;if(building.type==='port')portCount++;}
+ });
+ const troopMaximum=Math.floor(2*(Math.pow(Math.max(1,owned),.6)*15+50)+cityLevels*180);
  el('troop-cap-label').textContent=troopCurrent.toLocaleString()+' / '+troopMaximum.toLocaleString();
  (el('troop-cap-fill') as HTMLElement).style.width=(troopMaximum?Math.min(100,troopCurrent/troopMaximum*100):0)+'%';
- el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);el('rank-label').textContent=fieldRank(me?.score||0);el('online').textContent=(mode==='single'?String(current?.players.length||0):String(current?.players.filter(p=>p.connected).length||0))+'/'+(current?.capacity||50);el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
- el('available-troops').textContent=selectedSource>=0&&current?.tiles[selectedSource]?.owner===myId?String(current.tiles[selectedSource]!.troops):'—';
- const source=current&&selectedSource>=0?current.tiles[selectedSource]:null;
- el('selected-info').textContent=source?'TROOPS '+source.troops+' · '+(source.terrain||'land').toUpperCase()+' · '+(source.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
- el('tile-info').textContent=activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ SELECT A SOURCE · CLICK A DESTINATION TO MARCH · '+(selectedSource>=0?'SOURCE '+selectedSource:'NO SOURCE');
- el('tile-title').textContent=activeBuilding?'🏗 CONSTRUCTION MODE':'🌎 '+(current?.mapName||'WORLD MAP');
+ el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);
+ el('rank-label').textContent=fieldRank(me?.score||0);
+ el('online').textContent=(mode==='single'?String(current?.players.length||0):String(current?.players.filter(p=>p.connected).length||0))+'/'+(current?.capacity||50);
+ el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
+ const selected=selectedSource>=0&&current?getGameTile(selectedSource):null;
+ el('available-troops').textContent=selected&&selected.owner===myId?String(selected.troops):'—';
+ el('selected-info').textContent=selected&&selected.owner===myId?'TROOPS '+selected.troops+' · '+selected.terrain.toUpperCase()+' · '+(selected.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
+ el('tile-info').textContent=boatMode?'🚢 FERRY MODE · SELECT A COASTAL DESTINATION':activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ SELECT A SOURCE · CLICK A DESTINATION TO MARCH · '+(selectedSource>=0?'SOURCE '+selectedSource:'NO SOURCE');
+ el('tile-title').textContent=boatMode?'🚢 SETTLEMENT FERRY':activeBuilding?'🏗 CONSTRUCTION MODE':'🌎 '+(current?.mapName||'WORLD MAP');
  el('turn').textContent=String(current?.tick||0);
+ el('worker-ratio-label').textContent=soloWorkerRatio+'%';
+ const ratio=el('worker-ratio') as HTMLInputElement;
+ if(document.activeElement!==ratio)ratio.value=String(me?.workerRatio??soloWorkerRatio);
  if(mode==='single'&&soloLengthMinutes>0&&current){const remaining=Math.max(0,soloLengthMinutes*15-current.tick)*4;el('time-left').textContent=Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');}else el('time-left').textContent='∞';
-  const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Markets add income; Farms boost troop growth.';
+ const hint=el('build-hint');
+ if(boatMode)hint.textContent='🚢 Select a coastal Port tile first, then choose an unclaimed coastal landing site. Ferries establish peaceful island settlements.';
+ else if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';
+ else hint.textContent='Ports enable ferries and automatic trade routes. Cities increase troop capacity; factories and markets increase gold income; farms improve growth.';
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
+ (el('boat-mode') as HTMLButtonElement).classList.toggle('build-selected',boatMode);
 }
 function render(){if(!game)return;const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();}
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));}
 canvas.addEventListener('click',event=>{
- if(!game)return;const index=tileAt(event);if(index<0)return;const tile=game.tiles[index]!;
+ if(!game)return;
+ const index=tileAt(event);if(index<0)return;
+ if(mode==='multi'&&!game.tiles[index]){requestChunkForTile(index);report('🗺 Loading this section of the map…');return;}
+ const tile=mode==='single'?getGameTile(index):game.tiles[index]!;
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
- if(tile.owner===myId){selectedSource=index;hoverTile=-1;report('🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.');updateStats();draw();return;}
- const sourceIndex=selectedSource>=0&&game.tiles[selectedSource]?.owner===myId?selectedSource:-1;
- if(sourceIndex<0){report('🧭 Select one of your territories first, then choose a destination.');return;}
+ if(tile.owner===myId&&!boatMode){
+  selectedSource=index;hoverTile=-1;
+  const isPort=(tile.buildings||[]).some(b=>b.type==='port');
+  report(isPort?'⚓ Port selected. Activate SETTLE ISLAND to dispatch a ferry.':'🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.');
+  updateStats();draw();return;
+ }
+ const sourceIndex=selectedSource>=0&&getGameTile(selectedSource).owner===myId?selectedSource:-1;
+ if(sourceIndex<0){report(boatMode?'🚢 Select one of your coastal Ports first.':'🧭 Select one of your territories first, then choose a destination.');return;}
+ if(boatMode){
+  const source=getGameTile(sourceIndex);
+  if(!(source.buildings||[]).some(b=>b.type==='port')){report('🚢 Your selected source needs a Port.');return;}
+  if(mode==='single')localSendBoat(sourceIndex,index);
+  else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'boat',source:sourceIndex,target:index}));
+  boatMode=false;updateStats();render();return;
+ }
  const distance=Math.hypot(sourceIndex%game.width-index%game.width,Math.floor(sourceIndex/game.width)-Math.floor(index/game.width));
  if(distance>MAX_MARCH_DISTANCE){report('Destination is too far. Choose a point within '+MAX_MARCH_DISTANCE+' tiles.');return;}
  if(mode==='single'){localClaim(sourceIndex,index,forcePercent);render();checkSoloWinner();}
@@ -747,8 +776,8 @@ el('recruit-large').addEventListener('click',()=>el('recruit').click());
 el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selectedSource=-1;updateStats();draw();});
 el('center-map').addEventListener('click',resetCamera);
 canvas.addEventListener('wheel',event=>{event.preventDefault();zoomCamera(event.deltaY<0?.12:-.12);},{passive:false});
-canvas.addEventListener('pointerdown',event=>{if(event.button!==1)return;event.preventDefault();cameraDragging=true;cameraPointer=event.pointerId;cameraStart={x:event.clientX,y:event.clientY,cx:cameraX,cy:cameraY};canvas.setPointerCapture(event.pointerId);});
-canvas.addEventListener('pointermove',event=>{if(cameraDragging&&cameraStart&&event.pointerId===cameraPointer){cameraX=cameraStart.cx+event.clientX-cameraStart.x;cameraY=cameraStart.cy+event.clientY-cameraStart.y;applyCamera();return;}if(selectedSource>=0){const next=tileAt(event);if(next!==hoverTile){hoverTile=next;draw();}}});
+canvas.addEventListener('pointerdown',event=>{if(event.button!==1&&!(event.button===0&&event.shiftKey))return;event.preventDefault();cameraDragging=true;cameraPointer=event.pointerId;cameraStart={x:event.clientX,y:event.clientY,cx:cameraX,cy:cameraY};canvas.setPointerCapture(event.pointerId);});
+canvas.addEventListener('pointermove',event=>{if(cameraDragging&&cameraStart&&event.pointerId===cameraPointer){cameraX=cameraStart.cx-(event.clientX-cameraStart.x)/cameraZoom;cameraY=cameraStart.cy-(event.clientY-cameraStart.y)/cameraZoom;applyCamera();return;}if(selectedSource>=0){const next=tileAt(event);if(next!==hoverTile){hoverTile=next;draw();}}});
 canvas.addEventListener('pointerup',event=>{if(event.pointerId===cameraPointer){cameraDragging=false;cameraStart=null;}});
 canvas.addEventListener('pointercancel',()=>{cameraDragging=false;cameraStart=null;});canvas.addEventListener('pointerleave',()=>{hoverTile=-1;if(selectedSource>=0)draw();});
 canvas.addEventListener('contextmenu',event=>{event.preventDefault();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');});
