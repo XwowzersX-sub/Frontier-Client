@@ -44,7 +44,7 @@ app.innerHTML = `
  <div class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>TROOPS</small><b id="available-troops">0</b></div></div>
   <div class="dock-main">
-   <div class="dock-tabs"><button class="dock-tab active" data-tab="command">COMMAND</button><button class="dock-tab" data-tab="build">BUILD</button><button class="dock-tab" data-tab="units">UNITS</button><button class="dock-tab" data-tab="weapons">WEAPONS</button></div>
+   <div class="dock-tabs"><button class="dock-tab active" data-tab="command">COMMAND</button><button class="dock-tab" data-tab="build">BUILD</button><button class="dock-tab" data-tab="units">UNITS</button></div>
    <div id="command-panel" class="dock-panel">
     <div class="ratio-control"><small>ATTACK RATIO</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
     <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="center-map" class="dock-action">◎ CENTER</button></div>
@@ -55,22 +55,16 @@ app.innerHTML = `
      <button data-building="factory"><kbd>2</kbd><b>⚙ FACTORY</b><small>150 G</small></button>
      <button data-building="port"><kbd>3</kbd><b>⚓ PORT</b><small>120 G</small></button>
      <button data-building="defense_post"><kbd>4</kbd><b>▥ DEFENSE</b><small>80 G</small></button>
-     <button data-building="missile_silo"><kbd>5</kbd><b>⌂ SILO</b><small>250 G</small></button>
-     <button data-building="sam_launcher"><kbd>6</kbd><b>⬡ SAM</b><small>160 G</small></button>
-     <button data-building="warship"><kbd>7</kbd><b>⚓ WARSHIP</b><small>200 G</small></button>
+     <button data-building="market"><kbd>5</kbd><b>¤ MARKET</b><small>130 G</small></button>
+     <button data-building="farm"><kbd>6</kbd><b>♣ FARM</b><small>80 G</small></button>
+     
     </div><div class="dock-hint" id="build-hint">Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.</div>
    </div>
    <div id="units-panel" class="dock-panel hidden">
     <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +5</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
     <div class="dock-hint">Click adjacent neutral or enemy territory to attack using the selected troop ratio. Buildings provide passive bonuses.</div>
    </div>
-   <div id="weapons-panel" class="dock-panel hidden">
-    <div class="weapon-grid">
-     <button data-buy-weapon="atom">ARM ATOM <small>250 G</small></button><button data-fire-weapon="atom">FIRE ATOM <b id="ammo-atom">0</b></button>
-     <button data-buy-weapon="hydrogen">ARM HYDROGEN <small>500 G</small></button><button data-fire-weapon="hydrogen">FIRE HYDROGEN <b id="ammo-hydrogen">0</b></button>
-     <button data-buy-weapon="mirv">ARM MIRV <small>900 G</small></button><button data-fire-weapon="mirv">FIRE MIRV <b id="ammo-mirv">0</b></button>
-    </div><div class="dock-hint" id="weapon-hint">Arm at a Missile Silo, then choose FIRE and click enemy land. Enemy SAMs can intercept.</div>
-   </div>
+
   </div>
   <div class="dock-report"><small>FIELD REPORT</small><p id="report">Choose a game mode to begin.</p><div id="selected-info">No territory selected</div></div>
  </div>
@@ -118,7 +112,7 @@ function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);selectedSource=-1;activeBuilding=null;myId='human';
  const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[305,354,2045,2094];
- const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!,arsenal:{atom:0,hydrogen:0,mirv:0}}));
+ const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
  const tiles:Tile[]=Array.from({length:2400},(_,i)=>{const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;const coast=x<2||y<2||x>=58||y>=38;const lake=Math.abs(x-43)<3&&Math.abs(y-19)<4;return{owner:null,terrain:coast||lake?'water':n>.9?'mountain':n>.72?'forest':'plain',troops:0,buildings:[]};});
  starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:40,buildings:[]};});
  game={width:60,height:40,tiles,players,tick:0};setConnection('SOLO CAMPAIGN',true);report('The campaign is live. Click adjacent land to expand, or choose a structure below and click one of your own territories.');render();localTimer=setInterval(localTick,4000);
@@ -183,8 +177,7 @@ function updateStats(){
  el('tile-info').textContent=activeBuilding?'BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'CLICK ADJACENT LAND TO EXPAND · SELECTED '+(selectedSource>=0?'TILE '+selectedSource:'NONE');
  el('tile-title').textContent=activeBuilding?'CONSTRUCTION MODE':'WORLD MAP';
  el('turn').textContent=String(current?.tick||0);
- const arsenal=me?.arsenal||{atom:0,hydrogen:0,mirv:0};(['atom','hydrogen','mirv'] as WeaponType[]).forEach(w=>{const ammo=el('ammo-'+w);if(ammo)ammo.textContent=String(arsenal[w]||0);});
- const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.';
+  const hint=el('build-hint');if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';else hint.textContent='Choose a structure, then click one of your land tiles. Ports need a coastline; Warships need a Port.';
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
 }
 function render(){if(!game)return;const me=game.players.find(p=>p.id===myId);(el('player-swatch') as HTMLElement).style.background=me?.color||'#e8c76e';el('hud-name').textContent=me?.name||nickname;updateStats();draw();}
