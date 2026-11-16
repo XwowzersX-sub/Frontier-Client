@@ -113,7 +113,7 @@ function startSinglePlayer(){
  const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f'],names=[nickname,'Astra','Vex','Orion'],starts=[305,354,2045,2094];
  const players:Player[]=names.map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!}));
  const tiles:Tile[]=Array.from({length:2400},(_,i)=>{const x=i%60,y=Math.floor(i/60),n=Math.abs(Math.sin(i*12.9898+Math.floor(i/60)*78.233)*43758.5453)%1;const coast=x<2||y<2||x>=58||y>=38;const lake=Math.abs(x-43)<3&&Math.abs(y-19)<4;return{owner:null,terrain:coast||lake?'water':n>.9?'mountain':n>.72?'forest':'plain',troops:0,buildings:[]};});
- starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:40,buildings:[]};});
+ starts.forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:20,buildings:[]};});
  game={width:60,height:40,tiles,players,tick:0};setConnection('SOLO CAMPAIGN',true);report('The campaign is live. Click adjacent land to expand, or choose a structure below and click one of your own territories.');render();localTimer=setInterval(localTick,4000);
 }
 function localClaim(targetIndex:number,percent:number){
