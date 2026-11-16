@@ -7,11 +7,10 @@ const supabase = createClient(
   env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_MPWfzhBBPHCTjz-mH3ff4Q_8G1XSfnm'
 );
 const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.com').replace(/\/$/, '');
-type BuildingType = 'city'|'factory'|'port'|'defense_post'|'missile_silo'|'sam_launcher'|'warship';
+type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
 type Building = {type:BuildingType;level:number};
-type WeaponType = 'atom'|'hydrogen'|'mirv';
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
-type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; arsenal?:Record<WeaponType,number> };
+type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number };
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
