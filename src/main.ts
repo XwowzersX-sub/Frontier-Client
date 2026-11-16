@@ -18,6 +18,7 @@ app.innerHTML = `
  <aside class="panel">
   <div class="eyebrow">COMMANDER TERMINAL</div><h1>Claim your<br><em>frontier.</em></h1>
   <div class="auth-box"><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password (6+ characters)" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your commander identity.</p></div>
+  <button id="connect" class="primary connect-btn">WAKE / CONNECT TO MATCH</button>
   <div class="section-title">YOUR EMPIRE</div>
   <div class="stats"><div><small>GOLD</small><b id="gold">—</b></div><div><small>TERRITORY</small><b id="territory">—</b></div><div><small>SCORE</small><b id="score">—</b></div></div>
   <div class="section-title">ORDERS</div><button id="expand" class="primary" disabled>EXPAND SELECTED TILE <span>−4g</span></button><button id="recruit" class="secondary" disabled>RECRUIT 5 TROOPS <span>−25g</span></button>
