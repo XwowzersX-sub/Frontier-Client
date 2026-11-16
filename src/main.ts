@@ -57,6 +57,7 @@ el('signup').addEventListener('click', async () => {
 el('logout').addEventListener('click', async () => { await supabase.auth.signOut(); showAccount(null); if (socket) socket.close(); });
 el('connect').addEventListener('click', () => void connect());
 async function connect() {
+ if (reconnecting) return;
  if (serverUrl.includes('YOUR-RENDER')) { report('Set VITE_SERVER_URL in GitHub Actions Variables first.'); return; }
  if (socket && socket.readyState === WebSocket.OPEN) { socket.close(); return; }
  setConnection('WAKING SERVER…'); report('Sending a health request to wake Render. A sleeping free instance may take a minute.');
@@ -140,3 +141,4 @@ canvas.addEventListener('click',event=>{const index=tileAt(event);if(index<0)ret
 el('expand').addEventListener('click',()=>{if(socket?.readyState===WebSocket.OPEN&&selected>=0)socket.send(JSON.stringify({type:'claim',tile:selected}));});
 el('recruit').addEventListener('click',()=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'recruit'}));});
 draw();updateStats();
+void connect();
