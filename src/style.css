@@ -78,3 +78,13 @@ body{background:#091219;color:#e8eee9}
 .save-actions .dock-action:hover{border-color:#e8c76e;color:#ffe6a4}
 .unit-actions .dock-action{flex:1}
 @media(max-width:600px){.save-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}.save-actions .dock-action{min-width:0;padding:7px 4px;font-size:7px}}
+
+
+.quick-chat{display:flex;flex-direction:column;gap:6px;min-width:180px;flex:1}
+.chat-quick-buttons{display:flex;gap:5px;flex-wrap:wrap}
+.chat-quick-buttons button{margin:0;min-width:36px;padding:7px 8px;background:#263f45;border:1px solid #506a67;color:#f3ead0;font:10px 'DM Mono';cursor:pointer}
+.chat-quick-buttons button:hover{background:#405e5d;border-color:#e8c76e}
+.chat-entry{display:flex;gap:5px}
+.chat-entry input{min-width:0;flex:1;background:#0c171e;border:1px solid #50645f;color:#f3ead0;padding:8px;font:8px 'DM Mono'}
+.chat-entry .dock-action{flex:0 0 65px;min-width:65px;padding:8px}
+@media(max-width:600px){.quick-chat{width:100%;min-width:100%}.chat-quick-buttons{justify-content:center}.chat-entry input{font-size:8px}}
