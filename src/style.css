@@ -71,3 +71,10 @@ body{background:#091219;color:#e8eee9}
 .match-setup{box-shadow:inset 0 1px #ffffff0a}
 .solo-toolbar .world-icon{font-size:8px;padding:8px 10px}
 #pause-solo:hover,#speed-solo:hover{border-color:#e8c76e;color:#ffe6a4}
+
+
+.save-actions{display:flex;gap:6px;flex-wrap:wrap}
+.save-actions .dock-action{min-width:62px;flex:1;padding:9px 7px;font-size:8px;background:#243a40}
+.save-actions .dock-action:hover{border-color:#e8c76e;color:#ffe6a4}
+.unit-actions .dock-action{flex:1}
+@media(max-width:600px){.save-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}.save-actions .dock-action{min-width:0;padding:7px 4px;font-size:7px}}
