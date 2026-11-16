@@ -144,7 +144,11 @@ function startSinglePlayer(){
   const terrain:Tile['terrain']=edge||internalWater?'water':mountain?'mountain':n>.72?'forest':'plain';
   return{owner:null,terrain,troops:0,buildings:[]};
  });
- starts.slice(0,players.length).forEach((at,i)=>{tiles[at]={owner:players[i]!.id,terrain:'plain',troops:20,buildings:[]};});
+ starts.slice(0,players.length).forEach((at,i)=>{
+  const sx=at%60,sy=Math.floor(at/60);
+  for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){const px=sx+dx,py=sy+dy;if(px>=0&&px<60&&py>=0&&py<40){const tile=tiles[py*60+px]!;if(tile.terrain==='water'||tile.terrain==='mountain')tile.terrain='plain';}}
+  tiles[at]={owner:players[i]!.id,terrain:'plain',troops:20,buildings:[]};
+ });
  game={width:60,height:40,tiles,players,tick:0};
  setConnection('SOLO CAMPAIGN',true);
  el('solo-toolbar').classList.remove('hidden');
