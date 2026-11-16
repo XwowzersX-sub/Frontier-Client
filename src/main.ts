@@ -129,6 +129,13 @@ el('menu-settings').addEventListener('click',openSettings);el('game-settings').a
 el('settings-close').addEventListener('click',()=>showScreen(previousScreen));
 el('settings-save').addEventListener('click',()=>{settings={pixelScale:Number((el('pixel-scale') as HTMLSelectElement).value),grid:(el('grid-toggle') as HTMLInputElement).checked,sound:(el('sound-toggle') as HTMLInputElement).checked,counts:(el('count-toggle') as HTMLInputElement).checked};localStorage.setItem('frontier-settings',JSON.stringify(settings));draw();showScreen(game?'game':'menu');});
 el('main-menu').addEventListener('click',()=>{if(localTimer)clearInterval(localTimer);if(socket){socket.close();socket=null;}game=null;selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;showScreen('menu');});
+miniMap.addEventListener('click',event=>{
+ if(!game)return;
+ const rect=miniMap.getBoundingClientRect();
+ cameraX=Math.max(0,Math.min(game.width,((event.clientX-rect.left)/rect.width)*game.width));
+ cameraY=Math.max(0,Math.min(game.height,((event.clientY-rect.top)/rect.height)*game.height));
+ applyCamera();
+});
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 el('menu-single').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
 el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('game');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
@@ -641,6 +648,30 @@ function tileAt(event:MouseEvent|PointerEvent){
  const r=canvas.getBoundingClientRect(),x=Math.floor(cameraX+(event.clientX-r.left-r.width/2)/cameraZoom),y=Math.floor(cameraY+(event.clientY-r.top-r.height/2)/cameraZoom);
  return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;
 }
+function drawMiniMap(){
+ if(!game)return;
+ const w=miniMap.width,h=miniMap.height;
+ miniCtx.clearRect(0,0,w,h);miniCtx.fillStyle='#071a29';miniCtx.fillRect(0,0,w,h);
+ const sx=game.width/w,sy=game.height/h,ownerMap=new Map(game.players.map(p=>[p.id,p]));
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  const wx=Math.min(game.width-1,Math.floor((x+.5)*sx)),wy=Math.min(game.height-1,Math.floor((y+.5)*sy)),i=wy*game.width+wx;
+  const tile=game.tiles[i]||baseTileAt(i,mapIdFromTitle(game.mapName||'continents'),game.mapSeed||1);
+  const owner=tile.owner?ownerMap.get(tile.owner):undefined;
+  miniCtx.fillStyle=owner?.color||(tile.terrain==='water'?'#123e58':tile.terrain==='mountain'?'#627481':tile.terrain==='forest'?'#24543e':'#527b57');
+  miniCtx.fillRect(x,y,1,1);
+ }
+ for(const player of game.players){
+  if(player.home<0)continue;
+  const x=(player.home%game.width)/game.width*w,y=Math.floor(player.home/game.width)/game.height*h;
+  miniCtx.fillStyle=player.color;miniCtx.beginPath();miniCtx.arc(x,y,player.id===myId?3:2,0,Math.PI*2);miniCtx.fill();
+ }
+ const viewW=Math.min(w,(window.innerWidth/cameraZoom)/game.width*w);
+ const viewH=Math.min(h,(window.innerHeight/cameraZoom)/game.height*h);
+ const left=Math.max(0,Math.min(w-viewW,(cameraX-viewW*sx/2)/game.width*w));
+ const top=Math.max(0,Math.min(h-viewH,(cameraY-viewH*sy/2)/game.height*h));
+ miniCtx.strokeStyle='#9af4ff';miniCtx.lineWidth=1.5;miniCtx.shadowColor='#5beaff';miniCtx.shadowBlur=5;
+ miniCtx.strokeRect(left,top,Math.max(2,viewW),Math.max(2,viewH));miniCtx.shadowBlur=0;
+}
 function draw(){
  const cssW=window.innerWidth,cssH=window.innerHeight;
  const targetWidth=Math.max(1000,Math.round(cssW*1.5)),targetHeight=Math.max(700,Math.round(cssH*1.5));
@@ -697,6 +728,7 @@ function draw(){
   const sx=selectedSource%current.width,sy=Math.floor(selectedSource/current.width),tx=hoverTile%current.width,ty=Math.floor(hoverTile/current.width);
   if(Math.hypot(sx-tx,sy-ty)<=MAX_MARCH_DISTANCE){ctx.save();ctx.strokeStyle='#82f4ffcc';ctx.lineWidth=Math.max(1.5,tilePx*.12);ctx.setLineDash([tilePx*.7,tilePx*.5]);ctx.shadowColor='#54eaff';ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo((sx-cameraX+.5)*tilePx+canvas.width/2,(sy-cameraY+.5)*tilePx+canvas.height/2);ctx.lineTo((tx-cameraX+.5)*tilePx+canvas.width/2,(ty-cameraY+.5)*tilePx+canvas.height/2);ctx.stroke();ctx.restore();}
  }
+ drawMiniMap();
 }
 function fieldRank(score:number){
  if(score>=180)return 'GRANDMASTER';
