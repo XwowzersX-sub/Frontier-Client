@@ -72,8 +72,8 @@ app.innerHTML = `
    </div>
    <div id="units-panel" class="dock-panel hidden">
     <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +15</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
-    <div class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div>
-    <div class="dock-hint">Click adjacent neutral or enemy territory to attack using the selected troop ratio. Buildings provide passive bonuses.</div>
+    <div id="solo-save-actions" class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div>
+    <div class="dock-hint">Click adjacent neutral or enemy territory to expand. WASD pans, Q/E zoom, C centers, M toggles grid, Space pauses. Campaign saves can be exported and shared.</div>
    </div>
 
   </div>
@@ -115,7 +115,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>but
 el('menu-single').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
 el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('game');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
 async function connect(){
- mode='multi';el('solo-toolbar').classList.add('hidden');if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
+ mode='multi';el('solo-toolbar').classList.add('hidden');el('solo-save-actions').classList.add('hidden');if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
  if(socket?.readyState===WebSocket.OPEN){report('Already connected.');return;}
  setConnection('WAKING SERVER…');report('Waking the online world. Render may take up to a minute.');reconnecting=true;
  for(let attempt=0;attempt<14;attempt++){if(!reconnecting)return;try{const response=await fetch(serverUrl+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});if(response.ok){const {data}=await supabase.auth.getSession();const token=data.session?.access_token;socket=new WebSocket(serverUrl.replace(/^http/,'ws')+'/ws',token?['frontier','auth.'+token]:['frontier']);socket.onopen=()=>{setConnection('ONLINE',true);socket?.send(JSON.stringify({type:'join',name:getNickname()}));reconnecting=false;};socket.onmessage=event=>{const packet=JSON.parse(event.data);if(packet.type==='welcome')myId=packet.id;if(packet.type==='state'){game=packet.state as GameState;render();}if(packet.type==='notice'||packet.type==='error')report(packet.text);};socket.onclose=()=>{if(mode==='multi'){setConnection('DISCONNECTED');report('Connection lost. Return to menu and reconnect.');}};socket.onerror=()=>setConnection('CONNECTION ERROR');return;}}catch{}await new Promise(resolve=>setTimeout(resolve,Math.min(1500*(attempt+1),9000)));}
@@ -154,7 +154,7 @@ function startSinglePlayer(){
  });
  game={width:60,height:40,tiles,players,tick:0};
  setConnection('SOLO CAMPAIGN',true);
- el('solo-toolbar').classList.remove('hidden');
+ el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
  (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
  (el('speed-solo') as HTMLButtonElement).textContent='1× SPEED';
  el('match-banner').classList.add('hidden');
@@ -225,7 +225,7 @@ function restoreSoloSave(value:unknown):boolean{
  (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value=String(soloWinPercent);(el('solo-length') as HTMLSelectElement).value=String(soloLengthMinutes);
  (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';
  (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
- el('match-banner').classList.add('hidden');el('solo-toolbar').classList.remove('hidden');
+ el('match-banner').classList.add('hidden');el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
  setConnection('SOLO CAMPAIGN',true);showScreen('game');render();resetSoloTimer();return true;
 }
 el('save-solo').addEventListener('click',()=>{
@@ -240,7 +240,7 @@ el('load-solo').addEventListener('click',()=>{
 el('export-solo').addEventListener('click',()=>{
  const save=makeSoloSave();if(!save){report('Start a solo campaign before exporting.');return;}
  const blob=new Blob([JSON.stringify(save)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
- link.href=url;link.download='pixel-frontier-campaign.json';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);report('Campaign export prepared as a JSON save file.');
+ link.href=url;link.download='pixel-frontier-campaign.json';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);report('Campaign export prepared as a JSON save file.');
 });
 el('import-solo').addEventListener('click',()=>{(el('solo-file') as HTMLInputElement).click();});
 el('solo-file').addEventListener('change',async()=>{
