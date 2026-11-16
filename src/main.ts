@@ -36,18 +36,17 @@ app.innerHTML = `
 const el = (id: string) => document.getElementById(id)!;
 const report = (text: string) => { el('report').textContent = text; };
 const setConnection = (text: string, good = false) => { el('connection').textContent = '● ' + text; el('connection').className = 'connection ' + (good ? 'good' : ''); };
-async function refreshAuth() {
- const { data } = await supabase.auth.getUser();
- el('account').textContent = data.user ? (data.user.email?.split('@')[0] || 'COMMANDER').slice(0,16) : 'GUEST';
- el('logout').classList.toggle('hidden', !data.user);
+function showAccount(user: { email?: string | null } | null) {
+ el('account').textContent = user ? (user.email?.split('@')[0] || 'COMMANDER').slice(0,16) : 'GUEST';
+ el('logout').classList.toggle('hidden', !user);
 }
-void refreshAuth();
-supabase.auth.onAuthStateChange(() => void refreshAuth());
+void supabase.auth.getUser().then(({data}) => showAccount(data.user));
+supabase.auth.onAuthStateChange((_event, session) => showAccount(session?.user ?? null));
 el('login').addEventListener('submit', async event => {
  event.preventDefault();
  const { error } = await supabase.auth.signInWithPassword({ email: (el('email') as HTMLInputElement).value, password: (el('password') as HTMLInputElement).value });
  el('auth-message').textContent = error?.message || 'Signed in. Reconnect to join with your account identity.';
- if (!error) void refreshAuth();
+ if (!error) { const {data} = await supabase.auth.getUser(); showAccount(data.user); }
 });
 el('signup').addEventListener('click', async () => {
  const email = (el('email') as HTMLInputElement).value, password = (el('password') as HTMLInputElement).value;
@@ -55,7 +54,7 @@ el('signup').addEventListener('click', async () => {
  const { error } = await supabase.auth.signUp({ email, password });
  el('auth-message').textContent = error?.message || 'Account created. Check your email if confirmation is enabled.';
 });
-el('logout').addEventListener('click', async () => { await supabase.auth.signOut(); await refreshAuth(); if (socket) socket.close(); });
+el('logout').addEventListener('click', async () => { await supabase.auth.signOut(); showAccount(null); if (socket) socket.close(); });
 el('connect').addEventListener('click', () => void connect());
 async function connect() {
  if (serverUrl.includes('YOUR-RENDER')) { report('Set VITE_SERVER_URL in GitHub Actions Variables first.'); return; }
@@ -115,7 +114,10 @@ function updateStats(){
  const me=game?.players.find(p=>p.id===myId);
  const owned=game?.tiles.filter(t=>t.owner===myId).length||0;
  el('gold').textContent=me?String(me.gold):'—';el('territory').textContent=me?String(owned):'—';el('score').textContent=me?String(me.score):'—';
- const target=game?.tiles[selected],adjacent=game&&selected>=0&&[selected-1,selected+1,selected-game.width,selected+game.width].some(i=>i>=0&&i<game.tiles.length&&game!.tiles[i]!.owner===myId);
+ const target=game?.tiles[selected];
+ const x=game && selected>=0 ? selected%game.width : -1, y=game && selected>=0 ? Math.floor(selected/game.width) : -1;
+ const adjacentIndexes=game&&selected>=0?[x>0?selected-1:-1,x<game.width-1?selected+1:-1,y>0?selected-game.width:-1,y<game.height-1?selected+game.width:-1]:[];
+ const adjacent=Boolean(game&&adjacentIndexes.some(i=>i>=0&&game!.tiles[i]!.owner===myId));
  (el('expand') as HTMLButtonElement).disabled=!me||!target||target.owner===myId||!adjacent||target.terrain==='mountain'||me.gold<(target.owner?8:4)||Boolean(target.owner&&target.troops>=4);
  (el('recruit') as HTMLButtonElement).disabled=!me||me.gold<25;
  if(target&&game){const owner=game.players.find(p=>p.id===target.owner);el('tile-info').textContent='TILE '+(selected%game.width+1)+' / '+(Math.floor(selected/game.width)+1)+' · '+(owner?.name||'NEUTRAL')+' · '+target.terrain.toUpperCase()+' · '+target.troops+' TROOPS';}else el('tile-info').textContent='SELECT A TILE TO INSPECT';
