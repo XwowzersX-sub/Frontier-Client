@@ -72,6 +72,10 @@ app.innerHTML = `
    </div>
    <div id="units-panel" class="dock-panel hidden">
     <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +15</small></button><button id="clear-selection" class="dock-action">CANCEL BUILD / SELECT</button></div>
+    <div class="quick-chat">
+     <div class="chat-quick-buttons"><button data-chat="👋 Hello!">👋</button><button data-chat="👍 Nice!">👍</button><button data-chat="🤝 Team up?">🤝</button><button data-chat="🛡️ Defending here">🛡️</button><button data-chat="🏰 Building up">🏰</button></div>
+     <div class="chat-entry"><input id="chat-input" maxlength="80" placeholder="Send a quick message…"><button id="send-chat" class="dock-action">SEND</button></div>
+    </div>
     <div id="solo-save-actions" class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div>
     <div class="dock-hint">Click adjacent neutral or enemy territory to expand. WASD pans, Q/E zoom, C centers, M toggles grid, Space pauses. Campaign saves can be exported and shared.</div>
    </div>
@@ -349,6 +353,14 @@ document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>but
 document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
 document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.addEventListener('click',()=>{activeBuilding=button.dataset.building as BuildingType;document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Build mode: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your territories.');updateStats();}));
 el('recruit').addEventListener('click',()=>{if(mode==='single'&&game){const p=game.players.find(v=>v.id===myId);if(p)localRecruit(p);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'recruit'}));});
+function sendQuickChat(message:string){
+ const clean=message.replace(/[\\x00-\\x1f\\x7f]/g,' ').trim().slice(0,80);if(!clean)return;
+ if(mode==='multi'&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'chat',text:clean}));
+ else report(nickname+': '+clean);
+}
+document.querySelectorAll<HTMLButtonElement>('[data-chat]').forEach(button=>button.addEventListener('click',()=>sendQuickChat(button.dataset.chat||'')));
+el('send-chat').addEventListener('click',()=>{const input=el('chat-input') as HTMLInputElement;sendQuickChat(input.value);input.value='';});
+el('chat-input').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();el('send-chat').click();}});
 el('recruit-large').addEventListener('click',()=>el('recruit').click());
 el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selectedSource=-1;updateStats();draw();});
 el('center-map').addEventListener('click',resetCamera);
