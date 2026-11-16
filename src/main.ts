@@ -31,6 +31,14 @@ app.innerHTML = `
     <label>MATCH LENGTH <select id="solo-length"><option value="0">Unlimited</option><option value="10">10 Minutes</option><option value="20" selected>20 Minutes</option><option value="40">40 Minutes</option></select></label>
    </div>
   </details>
+  <details class="sandbox-settings"><summary>SANDBOX MODIFIERS</summary>
+   <div class="sandbox-grid">
+    <label><input id="sandbox-random" type="checkbox"> RANDOM SPAWN</label>
+    <label><input id="sandbox-gold" type="checkbox"> INFINITE GOLD</label>
+    <label><input id="sandbox-troops" type="checkbox"> INFINITE TROOPS</label>
+    <label><input id="sandbox-anonymous" type="checkbox"> ANONYMOUS NAMES</label>
+   </div>
+  </details>
   <details class="account-details"><summary>ACCOUNT / SIGN IN</summary><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your account identity.</p></details>
   <button id="menu-settings" class="text-button">⚙ SETTINGS</button>
  </div><div class="menu-version">PIXEL FRONTIER · REALM CONQUEST · BETA</div>
@@ -94,7 +102,7 @@ let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
 let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
-let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=20,soloSpeed=1,soloPaused=false,matchWinner:string|null=null;
+let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='continents',soloBotCount=3,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=20,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 let cameraZoom=1,cameraX=0,cameraY=0,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null;
 const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
@@ -137,9 +145,11 @@ function startSinglePlayer(){
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
  soloWinPercent=Number((el('solo-win') as HTMLSelectElement).value);
  soloLengthMinutes=Number((el('solo-length') as HTMLSelectElement).value);
+ soloRandomSpawn=(el('sandbox-random') as HTMLInputElement).checked;soloInfiniteGold=(el('sandbox-gold') as HTMLInputElement).checked;soloInfiniteTroops=(el('sandbox-troops') as HTMLInputElement).checked;soloAnonymous=(el('sandbox-anonymous') as HTMLInputElement).checked;
  const palette=['#4b9bd1','#db755e','#b18be0','#d2ad4f','#57b78a','#d77eb0','#78aeb5','#c18b62'];
- const commanders=[nickname,'Astra','Vex','Orion','Nova','Mako','Sable','Atlas'];
- const starts=[305,354,2045,2094,330,2070,1205,1254];
+ const commanders=soloAnonymous?['Commander 1','Nation A','Nation B','Nation C','Nation D','Nation E','Nation F','Nation G']:[nickname,'Astra','Vex','Orion','Nova','Mako','Sable','Atlas'];
+ const startsBase=[305,354,2045,2094,330,2070,1205,1254],starts=[...startsBase];
+ if(soloRandomSpawn){for(let i=starts.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[starts[i],starts[j]]=[starts[j]!,starts[i]!];}}
  const teamSize=soloMode==='duos'?2:soloMode==='trios'?3:soloMode==='squads'?4:1;
  const players:Player[]=commanders.slice(0,soloBotCount+1).map((name,i)=>({id:i===0?'human':'bot-'+i,name,color:palette[i]!,gold:160,score:0,connected:true,home:starts[i]!,team:Math.floor(i/teamSize)}));
  const tiles:Tile[]=Array.from({length:2400},(_,i)=>{
@@ -208,10 +218,10 @@ el('speed-solo').addEventListener('click',()=>{
  resetSoloTimer();
 });
 el('new-solo').addEventListener('click',()=>{startSinglePlayer();});
-type SoloSave = {version:1;game:GameState;soloMode:'ffa'|'duos'|'trios'|'squads';soloMap:string;soloBotCount:number;soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible';soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number};
+type SoloSave = {version:1;game:GameState;soloMode:'ffa'|'duos'|'trios'|'squads';soloMap:string;soloBotCount:number;soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible';soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number;soloRandomSpawn:boolean;soloInfiniteGold:boolean;soloInfiniteTroops:boolean;soloAnonymous:boolean};
 function makeSoloSave():SoloSave|null{
  if(!game||mode!=='single')return null;
- return {version:1,game:JSON.parse(JSON.stringify(game)) as GameState,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent,soloLengthMinutes,soloSpeed};
+ return {version:1,game:JSON.parse(JSON.stringify(game)) as GameState,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent,soloLengthMinutes,soloSpeed,soloRandomSpawn,soloInfiniteGold,soloInfiniteTroops,soloAnonymous};
 }
 function restoreSoloSave(value:unknown):boolean{
  if(!value||typeof value!=='object')return false;
@@ -224,9 +234,11 @@ function restoreSoloSave(value:unknown):boolean{
  soloWinPercent=[60,70,80,90].includes(Number(save.soloWinPercent))?Number(save.soloWinPercent):80;
  soloLengthMinutes=[0,10,20,40].includes(Number(save.soloLengthMinutes))?Number(save.soloLengthMinutes):20;
  soloSpeed=[1,2,4].includes(Number(save.soloSpeed))?Number(save.soloSpeed):1;
+ soloRandomSpawn=Boolean(save.soloRandomSpawn);soloInfiniteGold=Boolean(save.soloInfiniteGold);soloInfiniteTroops=Boolean(save.soloInfiniteTroops);soloAnonymous=Boolean(save.soloAnonymous);
  mode='single';myId='human';selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;resetCamera();
  (el('solo-mode') as HTMLSelectElement).value=soloMode;(el('solo-map') as HTMLSelectElement).value=soloMap;(el('solo-bots') as HTMLSelectElement).value=String(soloBotCount);
- (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value=String(soloWinPercent);(el('solo-length') as HTMLSelectElement).value=String(soloLengthMinutes);
+ (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value=String(soloWinPercent);
+ (el('sandbox-random') as HTMLInputElement).checked=soloRandomSpawn;(el('sandbox-gold') as HTMLInputElement).checked=soloInfiniteGold;(el('sandbox-troops') as HTMLInputElement).checked=soloInfiniteTroops;(el('sandbox-anonymous') as HTMLInputElement).checked=soloAnonymous;(el('solo-length') as HTMLSelectElement).value=String(soloLengthMinutes);
  (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';
  (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
  el('match-banner').classList.add('hidden');el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
@@ -270,12 +282,12 @@ function localBuild(index:number,type:BuildingType){
  if(type==='port'&&!neighborsLocal(index).some(n=>game!.tiles[n]!.terrain==='water')){report('Ports must be built on a coastline.');return false;}
  const max=type==='city'?4:type==='factory'?3:(type==='market'||type==='farm')?3:1;const currentLevel=type==='city'?(existing[0]?.level||0):existing.length;
  if(currentLevel>=max){report('That building is already at its maximum here.');return false;}
- const cost=buildCosts[type]*(type==='city'?currentLevel+1:1);if(me.gold<cost){report('You need '+cost+' gold for this build.');return false;}
- me.gold-=cost;if(type==='city'&&existing.length)existing[0]!.level=currentLevel+1;else tile.buildings.push({type,level:1});
+ const cost=buildCosts[type]*(type==='city'?currentLevel+1:1);if(!soloInfiniteGold&&me.gold<cost){report('You need '+cost+' gold for this build.');return false;}
+ if(!soloInfiniteGold)me.gold-=cost;if(type==='city'&&existing.length)existing[0]!.level=currentLevel+1;else tile.buildings.push({type,level:1});
  report(type.replace('_',' ').toUpperCase()+' constructed.');return true;
 }
 function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
-function localRecruit(player:Player){if(!game||player.gold<25)return;const home=game.tiles[player.home];if(home?.owner===player.id){player.gold-=25;home.troops+=15;}}
+function localRecruit(player:Player){if(!game||(!soloInfiniteGold&&player.gold<25))return;const home=game.tiles[player.home];if(home?.owner===player.id){if(!soloInfiniteGold)player.gold-=25;home.troops+=15;}}
 function botTurn(bot:Player){
  if(!game)return;const owned=game.tiles.map((t,i)=>t.owner===bot.id?i:-1).filter(i=>i>=0);if(!owned.length)return;
  const opts=owned.flatMap(i=>neighborsLocal(i).filter(n=>{const owner=game!.players.find(p=>p.id===game!.tiles[n]!.owner);return game!.tiles[n]!.owner!==bot.id&&game!.tiles[n]!.terrain!=='mountain'&&game!.tiles[n]!.terrain!=='water'&&!(soloMode!=='ffa'&&owner&&owner.team===bot.team);}).map(n=>({source:i,target:n,t:game!.tiles[n]!})));
@@ -300,10 +312,10 @@ function botBuild(bot:Player){
   });
   if(!eligible)continue;
   eligible.tile.buildings=eligible.tile.buildings||[];
-  eligible.tile.buildings.push({type,level:1});bot.gold-=cost;return;
+  eligible.tile.buildings.push({type,level:1});if(!soloInfiniteGold)bot.gold-=cost;return;
  }
 }
-function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;botTurn(bot);if(soloDifficulty==='intense'||soloDifficulty==='impossible')botTurn(bot);if(soloDifficulty==='impossible'&&game.tick%2===0)botTurn(bot);if(game.tick%3===0)botBuild(bot);}render();checkSoloWinner();}
+function localTick(){if(!game||mode!=='single'||soloPaused||matchWinner)return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);const bonus=land.reduce((sum,t)=>sum+(t.buildings||[]).reduce((n,b)=>n+(b.type==='factory'?3:b.type==='city'?b.level*2:b.type==='port'?2:b.type==='market'?4:0),0),0);p.gold=soloInfiniteGold?9999:Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3))+bonus);if(soloInfiniteTroops)for(const t of land)t.troops=9999;else if(game.tick%2===0)for(const t of land)if(t.troops<(99+((t.buildings||[]).find(b=>b.type==='city')?.level||0)*50))t.troops+=2+(t.buildings||[]).filter(b=>b.type==='farm').length;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){if(soloDifficulty==='relaxed'&&game.tick%2!==0)continue;botTurn(bot);if(soloDifficulty==='intense'||soloDifficulty==='impossible')botTurn(bot);if(soloDifficulty==='impossible'&&game.tick%2===0)botTurn(bot);if(game.tick%3===0)botBuild(bot);}render();checkSoloWinner();}
 function applyCamera(){canvas.style.transformOrigin='center center';canvas.style.transform='translate3d('+cameraX+'px,'+cameraY+'px,0) scale('+cameraZoom+')';}
 function resetCamera(){cameraZoom=1;cameraX=0;cameraY=0;applyCamera();}
 function zoomCamera(delta:number){cameraZoom=Math.max(1,Math.min(2.8,cameraZoom+delta));applyCamera();}
