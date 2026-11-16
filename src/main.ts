@@ -117,6 +117,7 @@ function botTurn(bot:Player){
 function localTick(){if(!game||mode!=='single')return;game.tick++;for(const p of game.players){const land=game.tiles.filter(t=>t.owner===p.id);p.gold=Math.min(9999,p.gold+Math.max(1,Math.floor(land.length/3)));if(game.tick%2===0)for(const t of land)if(t.troops<200)t.troops+=2;}for(const bot of game.players.filter(p=>p.id.startsWith('bot-'))){botTurn(bot);if(game.tick%3===0)botTurn(bot);}render();}
 function tileAt(event:PointerEvent){if(!game)return-1;const r=canvas.getBoundingClientRect(),x=Math.floor((event.clientX-r.left)*game.width/r.width),y=Math.floor((event.clientY-r.top)*game.height/r.height);return x>=0&&x<game.width&&y>=0&&y<game.height?y*game.width+x:-1;}
 function draw(){
+ const targetWidth=Math.round(1500/settings.pixelScale),targetHeight=Math.round(1000/settings.pixelScale);if(canvas.width!==targetWidth||canvas.height!==targetHeight){canvas.width=targetWidth;canvas.height=targetHeight;}
  const current=game;ctx.clearRect(0,0,canvas.width,canvas.height);if(!current){ctx.fillStyle='#101b24';ctx.fillRect(0,0,canvas.width,canvas.height);return;}
  const w=canvas.width/current.width,h=canvas.height/current.height;
  current.tiles.forEach((tile,i)=>{const x=i%current.width*w,y=Math.floor(i/current.width)*h,owner=current.players.find(p=>p.id===tile.owner);
@@ -125,7 +126,7 @@ function draw(){
   if(tile.terrain==='forest'){ctx.fillStyle='#1e3d2e';for(let k=0;k<3;k++){const tx=x+8+((seed*7+k*13)%(w-16)),ty=y+10+((seed*5+k*11)%(h-22));ctx.fillRect(tx,ty,8,13);ctx.fillRect(tx-4,ty+5,16,7);ctx.fillStyle='#71975b';ctx.fillRect(tx+2,ty+2,4,5);ctx.fillStyle='#1e3d2e';}}
   else if(tile.terrain==='mountain'){ctx.fillStyle='#c1c9c6';ctx.beginPath();ctx.moveTo(x+8,y+h-7);ctx.lineTo(x+w*.5,y+8);ctx.lineTo(x+w-7,y+h-7);ctx.fill();ctx.fillStyle='#e3e1cc';ctx.beginPath();ctx.moveTo(x+w*.5,y+8);ctx.lineTo(x+w*.38,y+h*.38);ctx.lineTo(x+w*.61,y+h*.38);ctx.fill();}
   else {ctx.fillStyle=owner?'#ffffff15':'#a2ba8322';for(let k=0;k<5;k++)ctx.fillRect(x+6+((seed*3+k*17)%(w-12)),y+7+((seed*5+k*19)%(h-14)),3,3);}
-  if(tile.owner&&settings.counts){ctx.fillStyle='#0b1218';ctx.fillRect(x+w*.28,y+h*.67,w*.44,h*.2);ctx.fillStyle='#fff';ctx.font='bold 15px monospace';ctx.textAlign='center';ctx.fillText(String(tile.troops),x+w*.5,y+h*.83);}
+  if(tile.owner&&settings.counts){ctx.fillStyle='#0b1218';ctx.fillRect(x+w*.28,y+h*.67,w*.44,h*.2);ctx.fillStyle='#fff';ctx.font='bold '+Math.max(5,15/settings.pixelScale)+'px monospace';ctx.textAlign='center';ctx.fillText(String(tile.troops),x+w*.5,y+h*.83);}
   if(route.includes(i)){ctx.fillStyle='#fff0a8';ctx.fillRect(x+5,y+5,w-10,h-10);}
   if(i===selectedSource){ctx.strokeStyle='#fff0a8';ctx.lineWidth=5;ctx.strokeRect(x+4,y+4,w-8,h-8);}
  });
