@@ -82,7 +82,7 @@ async function connect() {
      if (packet.type === 'state') { game = packet.state as GameState; render(); }
      if (packet.type === 'notice' || packet.type === 'error') report(packet.text);
     };
-    socket.onclose = () => { setConnection('DISCONNECTED'); report('Connection closed. Press Connect to rejoin.'); game = null; updateStats(); draw(); };
+    socket.onclose = () => { if(mode==='multi'){setConnection('DISCONNECTED');report('Connection closed. Press Connect to rejoin.');game=null;updateStats();draw();} };
     socket.onerror = () => { setConnection('CONNECTION ERROR'); };
     return;
    }
