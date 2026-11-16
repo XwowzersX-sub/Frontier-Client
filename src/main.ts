@@ -350,7 +350,6 @@ function makeSoloSave():SoloSave|null{
 function restoreSoloSave(value:unknown):boolean{
  if(!value||typeof value!=='object')return false;
  const save=value as Partial<SoloSave>&{game?:GameState};
- if(save.version===1&&save.game&&save.game.width===60&&save.game.height===40&&Array.isArray(save.game.tiles))return false;
  if(save.version!==2||!save.meta||save.meta.width!==WORLD_WIDTH||save.meta.height!==WORLD_HEIGHT||!Array.isArray(save.entries)||!Array.isArray(save.meta.players)||!save.meta.players.some(p=>p.id==='human'))return false;
  const tiles=new Array<Tile>(WORLD_WIDTH*WORLD_HEIGHT);
  for(const entry of save.entries){
