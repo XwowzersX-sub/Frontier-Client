@@ -11,8 +11,8 @@ type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
 type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
 type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number };
-type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:number[];step?:number;to?:number};
-type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[] };
+type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:number[];step?:number;from?:number;to?:number;destinationOwner?:string};
+type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; updates?:Array<[number,Tile]> };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
 <div id="menu-screen" class="screen menu-screen">
@@ -293,28 +293,29 @@ function resetSoloTimer(){
 }
 function checkSoloWinner(){
  if(!game||mode!=='single'||matchWinner)return;
- const playable=game.tiles.filter(t=>t.terrain!=='water'&&t.terrain!=='mountain').length;
- if(!playable)return;
+ const playable=game.playable||0;if(!playable)return;
+ const landCounts=new Map<string,number>();for(const p of game.players)landCounts.set(p.id,0);
+ game.tiles.forEach(tile=>{if(tile?.owner&&landCounts.has(tile.owner))landCounts.set(tile.owner,(landCounts.get(tile.owner)||0)+1);});
  const groups=new Map<number,{name:string;id:string;land:number}>();
  for(const p of game.players){
   const team=soloMode==='ffa'?game.players.indexOf(p):(p.team??0);
   const current=groups.get(team)||{name:p.name,id:p.id,land:0};
-  current.land+=game.tiles.filter(t=>t.owner===p.id).length;
+  current.land+=(landCounts.get(p.id)||0);
   if(p.id==='human'){current.name=p.name;current.id=p.id;}
   groups.set(team,current);
  }
- let winningEntry=[...groups.entries()].find(([,group])=>group.land/playable>=soloWinPercent/100);
+ const winningEntry=[...groups.entries()].find(([,group])=>group.land/playable>=.8);
  const surviving=[...groups.entries()].filter(([,group])=>group.land>0);
  const lastStanding=groups.size>1&&surviving.length===1;
- if(!winningEntry&&lastStanding)winningEntry=surviving[0];
- if(!winningEntry)return;
- const [winningTeam,winner]=winningEntry;
+ const winnerEntry=winningEntry||(lastStanding?surviving[0]:undefined);
+ if(!winnerEntry)return;
+ const [winningTeam,winner]=winnerEntry;
  const human=game.players.find(p=>p.id==='human');
  const isPlayerTeam=soloMode==='ffa'?winner.id==='human':(human?.team??0)===winningTeam;
  matchWinner=winner.name;soloPaused=true;if(localTimer)clearInterval(localTimer);
  el('match-result').textContent=isPlayerTeam?'VICTORY':'DEFEAT';
  const landPercent=Math.round(winner.land/playable*100);
- el('match-result-detail').textContent=(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+(lastStanding?' is the last commander standing.':' reached '+soloWinPercent+'% of the playable world.');
+ el('match-result-detail').textContent=(soloMode==='ffa'?winner.name:'Team '+(winningTeam+1))+(lastStanding?' is the last commander standing.':' reached 80% of the playable world.')+' ('+landPercent+'%).';
  el('match-banner').classList.remove('hidden');
  report(winner.name+(soloMode==='ffa'?'':' and their allies')+' won the campaign. Start a new match to play again.');
 }
@@ -331,30 +332,39 @@ el('speed-solo').addEventListener('click',()=>{
  resetSoloTimer();
 });
 el('new-solo').addEventListener('click',()=>{startSinglePlayer();});
-type SoloSave = {version:1;game:GameState;soloMode:'ffa'|'duos'|'trios'|'squads';soloMap:string;soloBotCount:number;soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible';soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number;soloRandomSpawn:boolean;soloInfiniteGold:boolean;soloInfiniteTroops:boolean;soloAnonymous:boolean;soloSpawnPreference?:string};
+type SoloSave = {version:2;meta:Omit<GameState,'tiles'|'updates'>;entries:Array<[number,Tile]>;soloMode:'ffa'|'duos'|'trios'|'squads';soloMap:string;soloBotCount:number;soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible';soloWinPercent:number;soloLengthMinutes:number;soloSpeed:number;soloRandomSpawn:boolean;soloInfiniteGold:boolean;soloInfiniteTroops:boolean;soloAnonymous:boolean;soloSpawnPreference?:string;soloWorkerRatio:number};
 function makeSoloSave():SoloSave|null{
  if(!game||mode!=='single')return null;
- return {version:1,game:JSON.parse(JSON.stringify(game)) as GameState,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent,soloLengthMinutes,soloSpeed,soloRandomSpawn,soloInfiniteGold,soloInfiniteTroops,soloAnonymous,soloSpawnPreference};
+ const entries:Array<[number,Tile]>=[];
+ game.tiles.forEach((tile,index)=>{if(tile)entries.push([index,tile]);});
+ const {tiles:_tiles,updates:_updates,...meta}=game;
+ return{version:2,meta,entries,soloMode,soloMap,soloBotCount,soloDifficulty,soloWinPercent:80,soloLengthMinutes:0,soloSpeed,soloRandomSpawn,soloInfiniteGold,soloInfiniteTroops,soloAnonymous,soloSpawnPreference,soloWorkerRatio};
 }
 function restoreSoloSave(value:unknown):boolean{
  if(!value||typeof value!=='object')return false;
- const save=value as Partial<SoloSave>;
- if(save.version!==1||!save.game||!Number.isInteger(save.game.width)||!Number.isInteger(save.game.height)||save.game.width<30||save.game.height<20||!Array.isArray(save.game.tiles)||save.game.tiles.length!==save.game.width*save.game.height||!Array.isArray(save.game.players)||!save.game.players.some(p=>p.id==='human'))return false;
- game={...save.game,tiles:save.game.tiles.map(t=>({...t,buildings:Array.isArray(t.buildings)?t.buildings:[]}))};
+ const save=value as Partial<SoloSave>&{game?:GameState};
+ if(save.version===1&&save.game&&save.game.width===60&&save.game.height===40&&Array.isArray(save.game.tiles))return false;
+ if(save.version!==2||!save.meta||save.meta.width!==WORLD_WIDTH||save.meta.height!==WORLD_HEIGHT||!Array.isArray(save.entries)||!Array.isArray(save.meta.players)||!save.meta.players.some(p=>p.id==='human'))return false;
+ const tiles=new Array<Tile>(WORLD_WIDTH*WORLD_HEIGHT);
+ for(const entry of save.entries){
+  if(!Array.isArray(entry)||!Number.isInteger(entry[0])||entry[0]<0||entry[0]>=tiles.length||!entry[1])continue;
+  tiles[entry[0]]={...entry[1],buildings:Array.isArray(entry[1].buildings)?entry[1].buildings:[]};
+ }
+ game={...save.meta,tiles,ships:save.meta.ships||[]};
  soloMode=save.soloMode==='duos'||save.soloMode==='trios'||save.soloMode==='squads'?save.soloMode:'ffa';
- soloMap=save.soloMap||'continents';soloBotCount=Math.max(0,Math.min(49,Number(save.soloBotCount)||0));
+ soloMap=save.soloMap||'random';soloBotCount=Math.max(0,Math.min(49,Number(save.soloBotCount)||0));
  soloDifficulty=save.soloDifficulty==='relaxed'||save.soloDifficulty==='intense'||save.soloDifficulty==='impossible'?save.soloDifficulty:'balanced';
- soloWinPercent=[60,70,80,90].includes(Number(save.soloWinPercent))?Number(save.soloWinPercent):80;
- soloLengthMinutes=0;
- soloSpeed=[1,2,4].includes(Number(save.soloSpeed))?Number(save.soloSpeed):1;
- soloRandomSpawn=Boolean(save.soloRandomSpawn);soloInfiniteGold=Boolean(save.soloInfiniteGold);soloInfiniteTroops=Boolean(save.soloInfiniteTroops);soloAnonymous=Boolean(save.soloAnonymous);soloSpawnPreference=save.soloSpawnPreference||'center';
- mode='single';myId='human';selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;resetCamera();
+ soloWinPercent=80;soloLengthMinutes=0;soloSpeed=[1,2,4].includes(Number(save.soloSpeed))?Number(save.soloSpeed):1;
+ soloRandomSpawn=Boolean(save.soloRandomSpawn);soloInfiniteGold=Boolean(save.soloInfiniteGold);soloInfiniteTroops=Boolean(save.soloInfiniteTroops);soloAnonymous=Boolean(save.soloAnonymous);
+ soloSpawnPreference=save.soloSpawnPreference||'center';soloWorkerRatio=Math.max(0,Math.min(100,Number(save.soloWorkerRatio)||30));
+ mode='single';myId='human';selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;boatMode=false;
  (el('solo-mode') as HTMLSelectElement).value=soloMode;(el('solo-map') as HTMLSelectElement).value=soloMap;(el('solo-bots') as HTMLSelectElement).value=String(soloBotCount);
- (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value=String(soloWinPercent);
- (el('sandbox-random') as HTMLInputElement).checked=soloRandomSpawn;(el('sandbox-gold') as HTMLInputElement).checked=soloInfiniteGold;(el('sandbox-troops') as HTMLInputElement).checked=soloInfiniteTroops;(el('sandbox-anonymous') as HTMLInputElement).checked=soloAnonymous;(el('start-region') as HTMLSelectElement).value=soloSpawnPreference;(el('solo-length') as HTMLSelectElement).value=String(soloLengthMinutes);
- (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';
- (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
+ (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value='80';
+ (el('sandbox-random') as HTMLInputElement).checked=soloRandomSpawn;(el('sandbox-gold') as HTMLInputElement).checked=soloInfiniteGold;(el('sandbox-troops') as HTMLInputElement).checked=soloInfiniteTroops;(el('sandbox-anonymous') as HTMLInputElement).checked=soloAnonymous;(el('start-region') as HTMLSelectElement).value=soloSpawnPreference;(el('solo-length') as HTMLSelectElement).value='0';
+ (el('worker-ratio') as HTMLInputElement).value=String(soloWorkerRatio);el('worker-ratio-label').textContent=soloWorkerRatio+'%';
+ (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';(el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
  el('match-banner').classList.add('hidden');el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
+ cameraZoom=8;const me=game.players.find(p=>p.id==='human');cameraX=me?me.home%WORLD_WIDTH:WORLD_WIDTH/2;cameraY=me?Math.floor(me.home/WORLD_WIDTH):WORLD_HEIGHT/2;
  setConnection('SOLO CAMPAIGN',true);showScreen('game');render();resetSoloTimer();return true;
 }
 el('save-solo').addEventListener('click',()=>{
@@ -481,7 +491,7 @@ function botTurn(bot:Player,ownedInput?:number[]){
     const target=y*game.width+x,targetTile=getGameTile(target);if(targetTile.owner===bot.id)continue;
     const route=marchPath(source,target);let reachable=0,score=0;
     for(const step of route){
-     const tile=game.tiles[step]!;
+     const tile=getGameTile(step);game.tiles[step]=tile;
      if(tile.terrain==='water'||tile.terrain==='mountain'||areAllies(bot.id,tile.owner))break;
      if(tile.owner===bot.id)continue;
      reachable++;
