@@ -183,7 +183,7 @@ async function connect(){
  mode='multi';el('solo-toolbar').classList.add('hidden');el('solo-save-actions').classList.add('hidden');if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
  if(socket?.readyState===WebSocket.OPEN){report('Already connected.');return;}
  setConnection('WAKING SERVER…');report('Waking the online world. Render may take up to a minute.');reconnecting=true;
- for(let attempt=0;attempt<14;attempt++){if(!reconnecting)return;try{const response=await fetch(serverUrl+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});if(response.ok){const {data}=await supabase.auth.getSession();const token=data.session?.access_token;socket=new WebSocket(serverUrl.replace(/^http/,'ws')+'/ws',token?['frontier','auth.'+token]:['frontier']);socket.onopen=()=>{setConnection('ONLINE',true);socket?.send(JSON.stringify({type:'join',name:getNickname(),spawnPreference:(el('start-region') as HTMLSelectElement).value}));reconnecting=false;};socket.onmessage=event=>{const packet=JSON.parse(event.data);if(packet.type==='welcome')myId=packet.id;if(packet.type==='state')handleNetworkState(packet.state as GameState);if(packet.type==='chunk')handleNetworkChunk(packet);if(packet.type==='notice'||packet.type==='error')report(packet.text);};socket.onclose=()=>{if(mode==='multi'){setConnection('DISCONNECTED');report('Connection lost. Return to menu and reconnect.');}};socket.onerror=()=>setConnection('CONNECTION ERROR');return;}}catch{}await new Promise(resolve=>setTimeout(resolve,Math.min(1500*(attempt+1),9000)));}
+ for(let attempt=0;attempt<14;attempt++){if(!reconnecting)return;try{const response=await fetch(serverUrl+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});if(response.ok){const {data}=await supabase.auth.getSession();const token=data.session?.access_token;socket=new WebSocket(serverUrl.replace(/^http/,'ws')+'/ws',token?['frontier','auth.'+token]:['frontier']);socket.onopen=()=>{setConnection('ONLINE',true);socket?.send(JSON.stringify({type:'join',name:getNickname(),spawnPreference:(el('start-region') as HTMLSelectElement).value}));reconnecting=false;};socket.onmessage=event=>{const packet=JSON.parse(event.data);if(packet.type==='welcome')myId=packet.id;if(packet.type==='state')handleNetworkState(packet.state as GameState);if(packet.type==='chunk')handleNetworkChunk(packet);if(packet.type==='error'&&matchPhase==='spawning'){const me=game?.players.find(player=>player.id===myId);spawnPlacementActive=!!me&&me.home<0;updateSpawnPhasePanel();}if(packet.type==='notice'||packet.type==='error')report(packet.text);};socket.onclose=()=>{if(mode==='multi'){setConnection('DISCONNECTED');report('Connection lost. Return to menu and reconnect.');}};socket.onerror=()=>setConnection('CONNECTION ERROR');return;}}catch{}await new Promise(resolve=>setTimeout(resolve,Math.min(1500*(attempt+1),9000)));}
  reconnecting=false;setConnection('SERVER UNAVAILABLE');report('Could not wake server. Check Render and try again.');
 }
 function neighborsLocal(i:number){if(!game)return[];const x=i%game.width,y=Math.floor(i/game.width);return [x?i-1:-1,x<game.width-1?i+1:-1,y?i-game.width:-1,y<game.height-1?i+game.width:-1].filter(n=>n>=0);}
@@ -1136,5 +1136,14 @@ window.addEventListener('keydown',event=>{
  const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','market','farm'];
  if(key>=1&&key<=6){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}
 });
+el('lobby-exit').addEventListener('click',()=>{reconnecting=false;if(socket){socket.close();socket=null;}game=null;matchPhase='playing';spawnPlacementActive=false;showScreen('menu');setConnection('NETWORK READY');});
+setInterval(()=>{
+ if(matchPhase==='countdown')updateLobbyCountdown();
+ if(matchPhase==='spawning'&&game){
+  const remaining=Math.max(0,Math.ceil((spawnEndsAt-(Date.now()+serverClockOffset))/1000));
+  const me=game.players.find(player=>player.id===myId);
+  if(me&&me.home<0)el('spawn-phase-help').textContent='Choose open land for your radius-4 starting blob · '+remaining+'s remaining.';
+ }
+},500);
 window.addEventListener('resize',()=>{draw();applyCamera();});
 applySettings();showScreen('menu');getNickname();
