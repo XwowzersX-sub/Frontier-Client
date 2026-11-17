@@ -14,7 +14,8 @@ type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | '
 type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number; territory?:number; troopsTotal?:number; troopMax?:number; troopRate?:number; goldRate?:number };
 type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:number[];step?:number;from?:number;to?:number;destinationOwner?:string};
 type ExpansionFrontView={owner:string;tile:number;troops:number};
-type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; expansions?:ExpansionFrontView[]; updates?:Array<[number,Tile]> };
+type MatchPhase='countdown'|'spawning'|'playing';
+type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; expansions?:ExpansionFrontView[]; phase?:MatchPhase;countdownEndsAt?:number;spawnEndsAt?:number;serverTime?:number;updates?:Array<[number,Tile]> };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
 <div id="menu-screen" class="screen home-screen">
@@ -63,14 +64,23 @@ app.innerHTML = `
   <div class="solo-start-row"><div><b>CAMPAIGN READY?</b><small>You can export or save your campaign in-game.</small></div><button id="solo-start" class="primary solo-start-btn">START CAMPAIGN <span>→</span></button></div>
  </div>
 </div>
+<div id="multiplayer-lobby-screen" class="screen home-screen hidden">
+ <header class="home-topbar"><div class="home-logo"><b>PIXEL <span>FRONTIER</span></b><small>MULTIPLAYER LOBBY</small></div><div class="home-toolbar"><div class="network-pill"><i id="lobby-network-dot"></i><span id="lobby-network-status">CONNECTING</span></div><button id="lobby-exit" class="home-icon-btn">← BACK</button></div></header>
+ <main class="lobby-layout">
+  <section class="lobby-map-card"><div class="lobby-section-head"><span>01 / WORLD PREVIEW</span><b id="lobby-map-name">GENERATING WORLD</b></div><canvas id="lobby-map-preview" width="600" height="360"></canvas><div class="lobby-map-footer"><span>1000 × 1000 TILE WORLD</span><span>RANDOM MAP ROTATION</span></div></section>
+  <aside class="lobby-side-card"><div class="lobby-section-head"><span>02 / COMMANDER ROSTER</span><b id="lobby-player-count">0 / 50</b></div><div class="lobby-countdown"><small>MATCH STARTS IN</small><b id="lobby-countdown-value">01:00</b><span id="lobby-phase-label">WAITING FOR COMMANDERS</span></div><div id="lobby-player-list" class="lobby-player-list"><div class="lobby-empty">Waiting for commanders to join…</div></div><div class="lobby-tip">When the countdown ends, the map opens for starting-territory placement. Pick an open area to claim your starting blob.</div></aside>
+ </main>
+ <footer class="home-footer"><span>PIXEL FRONTIER <i>·</i> SHARED WORLD</span><span>50 COMMANDER CAPACITY</span></footer>
+</div>
 <div id="settings-screen" class="screen modal-screen hidden"><div class="settings-card"><div class="modal-head"><div><div class="eyebrow">⚙ GAME OPTIONS</div><h2>SETTINGS</h2></div><button id="settings-close" class="secondary">CLOSE ✕</button></div><label class="setting-row">PIXEL SCALE <select id="pixel-scale"><option value="0.5">Micro pixels</option><option value="0.75" selected>Fine pixels</option><option value="1">Standard</option></select></label><label class="setting-row">MAP GRID <input id="grid-toggle" type="checkbox" checked></label><label class="setting-row">SOUND EFFECTS <input id="sound-toggle" type="checkbox"></label><label class="setting-row">SHOW TROOP COUNTS <input id="count-toggle" type="checkbox" checked></label><button id="settings-save" class="primary">✓ SAVE SETTINGS</button></div></div>
 <div id="game-screen" class="game-screen hidden">
  <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas><canvas id="map-overlay" aria-hidden="true"></canvas>
  <div class="world-topbar"><div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div><div class="world-metrics"><span>👑 <b id="commander-label">COMMANDER</b></span><span>🪙 <b id="gold">0</b></span><span>🗺 <b id="territory">0</b></span><span>🏅 <b id="rank-label">IRON</b></span><span>⏱ <b id="turn">0</b></span><span>⌛ <b id="time-left">∞</b></span><span>🌐 <b id="online">0/50</b></span><span>🌎 <b id="world-name">—</b></span><span>🔁 <b id="round">1</b></span></div><div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙ SETTINGS</button><button id="main-menu" class="world-icon">⌂ MENU</button></div></div>
+ <div id="spawn-placement-panel" class="spawn-placement-panel hidden"><b id="spawn-phase-title">CHOOSE YOUR STARTING TERRITORY</b><span id="spawn-phase-help">Click open land to place your radius-4 starting blob.</span><div id="spawn-phase-roster" class="spawn-phase-roster"></div></div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
  <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">🧭 CLICK ANY LAND DIRECTION TO EXPAND · SEND 25% OF YOUR TOTAL TROOPS</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
  <div class="minimap-panel"><div>🧭 WORLD RADAR <span>CLICK TO JUMP</span></div><canvas id="mini-map" width="180" height="180"></canvas></div>
- <div class="floating-dock">
+ <div id="floating-dock" class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ SELECTED TILE</small><b id="available-troops">0</b></div><div class="troop-stock"><div class="troop-stock-label"><small>⚔ TOTAL ARMY</small><b id="troop-cap-label">0 / 0</b></div><div class="troop-stock-track"><i id="troop-cap-fill"></i></div></div></div>
   <div class="dock-main"><div class="dock-tabs"><button class="dock-tab active" data-tab="command">⚔ COMMAND</button><button class="dock-tab" data-tab="build">🏗 BUILD</button><button class="dock-tab" data-tab="units">🎒 UNITS</button></div>
    <div id="command-panel" class="dock-panel"><div class="ratio-control"><small>⚔ NATION-WIDE EXPANSION</small><div class="troop-choices"><button data-force="25" class="chosen">25%</button><button data-force="50">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div><div class="economy-rates"><div><small>⚔ TROOP GROWTH</small><b id="troop-rate-label">+0.0/s</b></div><div><small>🪙 GOLD INCOME</small><b id="gold-rate-label">+1.0/s</b></div></div><div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="boat-mode" class="dock-action">🚢 SETTLE ISLAND <small>60 GOLD · PORT</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div></div>
@@ -90,6 +100,7 @@ let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
 let forcePercent=25,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
+let matchPhase:MatchPhase='playing',countdownEndsAt=0,spawnEndsAt=0,serverClockOffset=0,spawnPlacementActive=false;
 let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='random',soloBotCount=24,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=0,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false,soloSpawnPreference='center',soloWorkerRatio=30,boatMode=false;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 let cameraZoom=8,cameraX=500,cameraY=500,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null,hoverTile=-1;
@@ -141,7 +152,7 @@ function selectLandmass(startIndex:number){
 }
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
-function showScreen(name:'menu'|'game'|'settings'|'solo-setup'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');el('solo-setup-screen').classList.toggle('hidden',name!=='solo-setup');}
+function showScreen(name:'menu'|'game'|'settings'|'solo-setup'|'lobby'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');el('solo-setup-screen').classList.toggle('hidden',name!=='solo-setup');el('multiplayer-lobby-screen').classList.toggle('hidden',name!=='lobby');}
 function getNickname(){const field=el('nickname') as HTMLInputElement;nickname=(field.value.trim().replace(/[^a-zA-Z0-9 _-]/g,'').slice(0,18)||'Commander');field.value=nickname;localStorage.setItem('frontier-nickname',nickname);el('commander-label').textContent=nickname.toUpperCase();el('hud-name').textContent=nickname;return nickname;}
 function showAccount(user:{email?:string|null}|null){const b=el('logout');b.classList.toggle('hidden',!user);el('auth-message').textContent=user?'Signed in as '+(user.email||'commander'):'Sign in to keep your account identity.';}
 void supabase.auth.getUser().then(({data})=>showAccount(data.user));
@@ -167,7 +178,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>but
 el('menu-single').addEventListener('click',()=>{getNickname();showScreen('solo-setup');});
 el('solo-back').addEventListener('click',()=>showScreen('menu'));
 el('solo-start').addEventListener('click',event=>{event.preventDefault();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
-el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('game');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
+el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('lobby');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
 async function connect(){
  mode='multi';el('solo-toolbar').classList.add('hidden');el('solo-save-actions').classList.add('hidden');if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
  if(socket?.readyState===WebSocket.OPEN){report('Already connected.');return;}
