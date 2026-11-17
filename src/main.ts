@@ -102,6 +102,13 @@ let selectedLandmassSeed=-1,selectedLandmassName='',selectedLandmassSize=0;
 function clearLandmassSelection(){
  selectedLandmassCanvas=null;selectedLandmassMask=null;selectedLandmassSeed=-1;selectedLandmassName='';selectedLandmassSize=0;
 }
+function clearInteractionState(){
+ activeBuilding=null;boatMode=false;selectedSource=-1;hoverTile=-1;clearLandmassSelection();
+ document.querySelectorAll('[data-building]').forEach(button=>button.classList.remove('build-selected'));
+ document.querySelectorAll('[data-tab]').forEach(button=>button.classList.toggle('active',(button as HTMLElement).dataset.tab==='command'));
+ el('command-panel').classList.remove('hidden');el('build-panel').classList.add('hidden');el('units-panel').classList.add('hidden');
+ updateStats();draw();
+}
 function selectLandmass(startIndex:number){
  const current=game;if(!current)return;
  const mapId=mapIdFromTitle(current.mapName||'continents'),seed=current.mapSeed||1;
@@ -938,7 +945,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-chat]').forEach(button=>butt
 el('send-chat').addEventListener('click',()=>{const input=el('chat-input') as HTMLInputElement;sendQuickChat(input.value);input.value='';});
 el('chat-input').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();el('send-chat').click();}});
 el('recruit-large').addEventListener('click',()=>el('recruit').click());
-el('clear-selection').addEventListener('click',()=>{activeBuilding=null;selectedSource=-1;updateStats();draw();});
+el('clear-selection').addEventListener('click',clearInteractionState);
 el('center-map').addEventListener('click',resetCamera);
 canvas.addEventListener('wheel',event=>{event.preventDefault();zoomCamera(event.deltaY<0?.12:-.12);},{passive:false});
 canvas.addEventListener('pointerdown',event=>{if(event.button!==1&&!(event.button===0&&event.shiftKey))return;event.preventDefault();cameraDragging=true;cameraPointer=event.pointerId;cameraStart={x:event.clientX,y:event.clientY,cx:cameraX,cy:cameraY};canvas.setPointerCapture(event.pointerId);});
@@ -947,8 +954,9 @@ canvas.addEventListener('pointerup',event=>{if(event.pointerId===cameraPointer){
 canvas.addEventListener('pointercancel',()=>{cameraDragging=false;cameraStart=null;});canvas.addEventListener('pointerleave',()=>{hoverTile=-1;if(selectedSource>=0)draw();});
 canvas.addEventListener('contextmenu',event=>{event.preventDefault();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');});
 window.addEventListener('keydown',event=>{
- if(event.key==='Escape'){activeBuilding=null;boatMode=false;updateStats();draw();return;}
+ if(event.key==='Escape'){clearInteractionState();return;}
  if(document.activeElement instanceof HTMLInputElement||document.activeElement instanceof HTMLTextAreaElement||document.activeElement instanceof HTMLSelectElement)return;
+ if(event.key==='Backspace'){event.preventDefault();clearInteractionState();report('Selection cleared. Click land to expand normally.');return;}
  if(event.code==='Space'&&mode==='single'&&!matchWinner){event.preventDefault();el('pause-solo').click();return;}
  if(event.key.toLowerCase()==='c'){resetCamera();return;}
  if(event.key.toLowerCase()==='m'){settings.grid=!settings.grid;draw();return;}
