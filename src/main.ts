@@ -43,6 +43,7 @@ app.innerHTML = `
    <section class="commander-panel"><div class="panel-heading"><span>02 / COMMANDER PROFILE</span><b>IDENTITY</b></div><label class="field-label" for="nickname">YOUR DISPLAY NAME</label><input id="nickname" maxlength="18" placeholder="Enter commander name" autocomplete="nickname"><div class="profile-foot"><span class="profile-swatch"></span><span>YOUR NAME IS SHOWN IN MATCHES</span></div></section>
    <section class="mode-panel"><div class="panel-heading"><span>03 / GAME MODES</span><b>CHOOSE A MODE</b></div><button id="menu-single" class="mode-choice"><span class="mode-icon">▦</span><span class="mode-copy"><b>SOLO CAMPAIGN</b><small>Set up a world with AI nations.</small></span><span class="mode-arrow">→</span></button><div class="mode-divider"></div><div class="mode-note"><span>✦</span><p><b>YOUR WORLD, YOUR RULES</b><small>Choose the map, AI count, difficulty, and starting region before launch.</small></p></div></section>
    <details class="account-panel"><summary><span>ACCOUNT & SIGN IN</span><span class="account-summary-right">OPTIONAL ＋</span></summary><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your account identity.</p></details>
+   <section class="leaderboard-panel"><div class="panel-heading"><span>04 / GLOBAL RANKINGS</span><b>TOP COMMANDERS</b></div><div class="leaderboard-tabs"><button data-leaderboard-sort="wins" class="active">WINS</button><button data-leaderboard-sort="losses">LOSSES</button><button data-leaderboard-sort="land_claimed">LAND</button><button data-leaderboard-sort="play_time_seconds">TIME</button></div><p id="leaderboard-status" class="leaderboard-status">Sign in to view the global leaderboard.</p><div class="leaderboard-table-wrap"><table class="leaderboard-table"><thead><tr><th>#</th><th>COMMANDER</th><th id="leaderboard-value-heading">WINS</th></tr></thead><tbody id="leaderboard-body"></tbody></table></div><div id="leaderboard-self" class="leaderboard-self">YOUR STATS · Sign in to track your record</div><p class="leaderboard-foot">Live-world multiplayer stats · Updated automatically</p></section>
   </aside>
  </main>
  <footer class="home-footer"><span>PIXEL FRONTIER <i>·</i> REALM CONQUEST</span><span>BUILD YOUR NATION. CLAIM YOUR WORLD.</span></footer>
@@ -154,7 +155,49 @@ const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
 function showScreen(name:'menu'|'game'|'settings'|'solo-setup'|'lobby'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');el('solo-setup-screen').classList.toggle('hidden',name!=='solo-setup');el('multiplayer-lobby-screen').classList.toggle('hidden',name!=='lobby');}
 function getNickname(){const field=el('nickname') as HTMLInputElement;nickname=(field.value.trim().replace(/[^a-zA-Z0-9 _-]/g,'').slice(0,18)||'Commander');field.value=nickname;localStorage.setItem('frontier-nickname',nickname);el('commander-label').textContent=nickname.toUpperCase();el('hud-name').textContent=nickname;return nickname;}
-function showAccount(user:{email?:string|null}|null){const b=el('logout');b.classList.toggle('hidden',!user);el('auth-message').textContent=user?'Signed in as '+(user.email||'commander'):'Sign in to keep your account identity.';}
+let currentUserId='';
+type LeaderboardSort='wins'|'losses'|'land_claimed'|'play_time_seconds';
+let leaderboardSort:LeaderboardSort='wins',leaderboardRequest=0;
+function formatLeaderboardValue(sort:LeaderboardSort,value:number){
+ const amount=Math.max(0,Number(value)||0);
+ if(sort==='play_time_seconds'){const hours=Math.floor(amount/3600),minutes=Math.floor((amount%3600)/60);return hours?hours+'h '+minutes+'m':minutes+'m';}
+ return amount.toLocaleString();
+}
+async function loadLeaderboard(){
+ const request=++leaderboardRequest;
+ const status=el('leaderboard-status'),body=el('leaderboard-body');
+ const heading=el('leaderboard-value-heading');
+ const labels:Record<LeaderboardSort,string>={wins:'WINS',losses:'LOSSES',land_claimed:'LAND CLAIMED',play_time_seconds:'PLAY TIME'};
+ heading.textContent=labels[leaderboardSort];
+ document.querySelectorAll<HTMLButtonElement>('[data-leaderboard-sort]').forEach(button=>button.classList.toggle('active',button.dataset.leaderboardSort===leaderboardSort));
+ if(!currentUserId){status.textContent='Sign in to view the global leaderboard.';body.replaceChildren();el('leaderboard-self').textContent='YOUR STATS · Sign in to track your record';return;}
+ status.textContent='Loading global rankings…';
+ const [ranked,own]=await Promise.all([
+  supabase.from('player_stats').select('user_id,wins,losses,games_played,play_time_seconds,land_claimed').order(leaderboardSort,{ascending:false}).order('wins',{ascending:false}).limit(10),
+  supabase.from('player_stats').select('wins,losses,games_played,play_time_seconds,land_claimed').eq('user_id',currentUserId).maybeSingle()
+ ]);
+ if(request!==leaderboardRequest)return;
+ if(ranked.error){status.textContent='Leaderboard unavailable: '+ranked.error.message;return;}
+ const rows=ranked.data||[],ids=rows.map((row:any)=>row.user_id);
+ const profileResult=ids.length?await supabase.from('profiles').select('id,username').in('id',ids):{data:[],error:null};
+ if(request!==leaderboardRequest)return;
+ const names=new Map<string,string>((profileResult.data||[]).map((profile:any)=>[profile.id,profile.username||'Commander']));
+ body.replaceChildren();
+ rows.forEach((row:any,index:number)=>{
+  const tr=document.createElement('tr');if(row.user_id===currentUserId)tr.classList.add('is-you');
+  const rankCell=document.createElement('td');rankCell.textContent=String(index+1).padStart(2,'0');
+  const nameCell=document.createElement('td');nameCell.textContent=names.get(row.user_id)||'Commander';
+  const valueCell=document.createElement('td');valueCell.textContent=formatLeaderboardValue(leaderboardSort,row[leaderboardSort]);
+  tr.append(rankCell,nameCell,valueCell);body.append(tr);
+ });
+ status.textContent=rows.length?'TOP '+rows.length+' COMMANDERS · SORTED BY '+labels[leaderboardSort]:'No ranked commanders yet. Finish a match to appear here.';
+ const mine=own.data;
+ el('leaderboard-self').textContent=mine
+  ?'YOUR RECORD · '+Number(mine.wins||0)+' WINS · '+Number(mine.losses||0)+' LOSSES · '+formatLeaderboardValue('land_claimed',mine.land_claimed)+' LAND · '+formatLeaderboardValue('play_time_seconds',mine.play_time_seconds)
+  :'YOUR RECORD · Play a live match to start building your stats';
+}
+function showAccount(user:{id?:string;email?:string|null}|null){const b=el('logout');b.classList.toggle('hidden',!user);currentUserId=user?.id||'';el('auth-message').textContent=user?'Signed in as '+(user.email||'commander'):'Sign in to keep your account identity.';void loadLeaderboard();}
+document.querySelectorAll<HTMLButtonElement>('[data-leaderboard-sort]').forEach(button=>button.addEventListener('click',()=>{leaderboardSort=(button.dataset.leaderboardSort||'wins') as LeaderboardSort;void loadLeaderboard();}));
 void supabase.auth.getUser().then(({data})=>showAccount(data.user));
 supabase.auth.onAuthStateChange((_event,session)=>showAccount(session?.user??null));
 el('login').addEventListener('submit',async event=>{event.preventDefault();const {error}=await supabase.auth.signInWithPassword({email:(el('email') as HTMLInputElement).value,password:(el('password') as HTMLInputElement).value});el('auth-message').textContent=error?.message||'Signed in.';});
