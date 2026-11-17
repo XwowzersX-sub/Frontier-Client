@@ -765,7 +765,7 @@ function advanceLocalExpansions(){
     const nextCandidate=makeExpansionCandidate(expansion.owner,expansion.targetOwner,next,expansion.visited,expansion.dirX,expansion.dirY,expansion.centerX,expansion.centerY,expansion.targetX,expansion.targetY);
     if(nextCandidate)pushExpansionFrontier(expansion.frontier,nextCandidate);
    }
-   const tilesPerTick=Math.max(4,Math.min(16,Math.ceil(Math.sqrt(Math.max(1,expansion.frontier.length))*1.5)));
+   const tilesPerTick=Math.max(2,Math.min(8,Math.ceil(Math.sqrt(Math.max(1,expansion.frontier.length))*.75)));
    tickBudget-=1/tilesPerTick;
   }
   if(!expansion.frontier.length||expansion.remaining<=0){
