@@ -639,58 +639,51 @@ function areAllies(attackerId:string,ownerId:string|null){
  const attacker=game.players.find(p=>p.id===attackerId),defender=game.players.find(p=>p.id===ownerId);
  return !!attacker&&!!defender&&attacker.team===defender.team;
 }
-type ExpansionCandidate={index:number;edge:number;pressure:number};
+type ExpansionCandidate={index:number;edge:number;pressure:number;priority:number};
 type LocalExpansion={owner:string;targetOwner:string|null;sent:number;remaining:number;defenderTroops:number;frontWidth:number;launchIndex:number;candidates:ExpansionCandidate[];cursor:number;captured:number};
 const localExpansions:LocalExpansion[]=[];
 function buildLocalExpansionFront(ownerId:string,targetOwner:string|null,owned:{index:number;x:number;y:number;tile:Tile}[],dirX:number,dirY:number,targetIndex:number,sent:number):ExpansionCandidate[]{
  const current=game;if(!current)return[];
- const size=current.width*current.height,visited=new Uint8Array(size),queue=new Int32Array(size),edgeByIndex=new Float32Array(size);edgeByIndex.fill(Infinity);
- const candidates:ExpansionCandidate[]=[];
- let head=0,tail=0;
+ const size=current.width*current.height,visited=new Uint8Array(size),simulatedOwned=new Uint8Array(size);
+ const heap:ExpansionCandidate[]=[],candidates:ExpansionCandidate[]=[];
  const cx=owned.reduce((sum,v)=>sum+v.x,0)/owned.length,cy=owned.reduce((sum,v)=>sum+v.y,0)/owned.length;
  const tx=targetIndex%current.width,ty=Math.floor(targetIndex/current.width);
  const limit=Math.min(16000,Math.max(160,Math.ceil(sent*90)));
- const canEnter=(i:number)=>{
-  const tile=getGameTile(i);
-  return tile.terrain!=='water'&&tile.owner===targetOwner;
+ const canEnter=(i:number)=>{const tile=getGameTile(i);return tile.terrain!=='water'&&tile.owner===targetOwner;};
+ const push=(candidate:ExpansionCandidate)=>{
+  let i=heap.length;heap.push(candidate);
+  while(i>0){const parent=(i-1)>>1;if(heap[parent]!.priority<=candidate.priority)break;heap[i]=heap[parent]!;i=parent;}
+  heap[i]=candidate;
  };
- const seeds:{index:number;edge:number}[]=[];
- for(const cell of owned){
-  for(const next of neighborsLocal(cell.index)){
-   if(visited[next]||!canEnter(next))continue;
-   const x=next%current.width,y=Math.floor(next/current.width),rx=x-cx,ry=y-cy;
-   const forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
-   const distanceToTarget=Math.hypot(tx-x,ty-y);
-   const edge=.55+lateral*.018-forward*.035+distanceToTarget*.0007+(valueNoise(x*.08,y*.08,current.mapSeed||1)-.5)*.025;
-   visited[next]=1;edgeByIndex[next]=edge;seeds.push({index:next,edge});
-  }
+ const pop=():ExpansionCandidate|undefined=>{
+  if(!heap.length)return undefined;
+  const first=heap[0]!,last=heap.pop()!;
+  if(heap.length){let i=0;while(true){const left=i*2+1,right=left+1;if(left>=heap.length)break;const child=right<heap.length&&heap[right]!.priority<heap[left]!.priority?right:left;if(heap[child]!.priority>=last.priority)break;heap[i]=heap[child]!;i=child;}heap[i]=last;}
+  return first;
+ };
+ const addFrontierTile=(index:number)=>{
+  if(visited[index]||!canEnter(index))return;
+  visited[index]=1;
+  const tile=getGameTile(index),x=index%current.width,y=Math.floor(index/current.width),rx=x-cx,ry=y-cy;
+  const forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
+  const edge=.55+lateral*.018-forward*.035+Math.hypot(tx-x,ty-y)*.0007+(valueNoise(x*.08,y*.08,current.mapSeed||1)-.5)*.025;
+  let adjacentOwned=0;
+  for(const next of neighborsLocal(index))if(getGameTile(next).owner===ownerId||simulatedOwned[next])adjacentOwned++;
+  const terrainBias=tile.terrain==='mountain'?2:tile.terrain==='forest'?1.5:1;
+  // OpenFront-style priority frontier: newly exposed border tiles enter a heap.
+  // Nearby multi-edge pressure gets priority, with deterministic jitter so the edge flexes.
+  const priority=valueNoise(x*.17,y*.17,(current.mapSeed||1)+index)*7+(1-adjacentOwned*.5+terrainBias/2)*10+Math.max(0,lateral-Math.max(0,forward)*.25)*.012-Math.max(0,forward)*.002;
+  const pressure=tile.terrain==='mountain'?.34:tile.terrain==='forest'?.19:.16;
+  push({index,edge,pressure,priority});
+ };
+ for(const cell of owned)for(const next of neighborsLocal(cell.index))addFrontierTile(next);
+ while(heap.length&&candidates.length<limit){
+  const candidate=pop();if(!candidate)break;
+  if(!canEnter(candidate.index))continue;
+  candidates.push(candidate);
+  simulatedOwned[candidate.index]=1;
+  for(const next of neighborsLocal(candidate.index))addFrontierTile(next);
  }
- // Like OpenFront's border queue, start with exposed border tiles, then add
- // only adjacent tiles as the front advances. Seed ordering biases the clicked direction.
- seeds.sort((left,right)=>left.edge-right.edge);
- for(const seed of seeds){
-  if(tail>=queue.length)break;
-  queue[tail++]=seed.index;
-  const tile=getGameTile(seed.index);
-  const terrainCost=tile.terrain==='mountain'?.34:tile.terrain==='forest'?.19:.16;
-  candidates.push({index:seed.index,edge:seed.edge,pressure:terrainCost});
- }
- while(head<tail&&candidates.length<limit){
-  const index=queue[head++]!,x=index%current.width,y=Math.floor(index/current.width);
-  const parentEdge=edgeByIndex[index]||1;
-  for(const next of neighborsLocal(index)){
-   if(visited[next]||!canEnter(next)||tail>=queue.length)continue;
-   const nx=next%current.width,ny=Math.floor(next/current.width),stepX=nx-x,stepY=ny-y;
-   const forwardStep=stepX*dirX+stepY*dirY,lateralStep=Math.abs(stepX*dirY-stepY*dirX);
-   const edge=parentEdge+.86-forwardStep*.24+lateralStep*.10+(valueNoise(nx*.11,ny*.11,current.mapSeed||1)-.5)*.02;
-   visited[next]=1;edgeByIndex[next]=edge;queue[tail++]=next;
-   const tile=getGameTile(next),terrainCost=tile.terrain==='mountain'?.34:tile.terrain==='forest'?.19:.16;
-   candidates.push({index:next,edge,pressure:terrainCost});
-   if(candidates.length>=limit)break;
-  }
- }
- // Preserve breadth-first discovery order: every candidate is adjacent to land
- // already held or captured before it, preventing disconnected "teleport" claims.
  return candidates;
 }
 function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInput?:number[]){
@@ -763,7 +756,7 @@ function advanceLocalExpansions(){
   // Unclaimed settlement growth advances as a broad connected wave; contested land keeps its current progression.
   const settlementSweep=expansion.targetOwner===null;
   // Small, frequent steps make the frontier read as a continuous flow instead of a single large fill.
-  const batch=settlementSweep?Math.min(expansion.candidates.length-expansion.cursor,Math.max(6,Math.min(16,Math.ceil(expansion.frontWidth*.03)))):Math.max(3,Math.min(6,Math.ceil(expansion.frontWidth/(1+strength)*.8)));
+  const batch=settlementSweep?Math.min(expansion.candidates.length-expansion.cursor,Math.max(8,Math.min(48,Math.ceil(expansion.frontWidth*.35)))):Math.max(6,Math.min(30,Math.ceil(expansion.frontWidth*.22)));
   const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
   while(expansion.cursor<end){
    const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
@@ -1194,6 +1187,26 @@ function fieldRank(score:number){
  if(score>=5)return 'BRONZE';
  return 'IRON';
 }
+let displayedTerritoryCount:number|null=null,targetTerritoryCount=0,territoryCounterFrame=0,territoryCounterLastTime=0;
+function updateTerritoryCounter(target:number){
+ targetTerritoryCount=Math.max(0,target);
+ const label=el('territory');
+ if(displayedTerritoryCount===null){displayedTerritoryCount=targetTerritoryCount;label.textContent=Math.round(displayedTerritoryCount).toLocaleString();return;}
+ if(territoryCounterFrame)return;
+ const animate=(now:number)=>{
+  const elapsed=territoryCounterLastTime?Math.min(64,Math.max(0,now-territoryCounterLastTime)):16;
+  territoryCounterLastTime=now;
+  const blend=1-Math.exp(-elapsed/115);
+  displayedTerritoryCount!+=(targetTerritoryCount-displayedTerritoryCount!)*blend;
+  label.textContent=Math.round(displayedTerritoryCount!).toLocaleString();
+  if(Math.abs(targetTerritoryCount-displayedTerritoryCount!)<.5){
+   displayedTerritoryCount=targetTerritoryCount;label.textContent=Math.round(displayedTerritoryCount).toLocaleString();
+   territoryCounterFrame=0;territoryCounterLastTime=0;return;
+  }
+  territoryCounterFrame=requestAnimationFrame(animate);
+ };
+ territoryCounterFrame=requestAnimationFrame(animate);
+}
 function updateStats(){
  const current=game,me=current?.players.find(p=>p.id===myId);
  let owned=0,troopCurrent=0,cityLevels=0;
@@ -1213,7 +1226,7 @@ function updateStats(){
  (el('troop-cap-fill') as HTMLElement).style.width=(troopMaximum?Math.min(100,troopCurrent/troopMaximum*100):0)+'%';
  el('troop-rate-label').textContent='+'+rateText(troopRate)+'/s';
  el('gold-rate-label').textContent='+'+rateText(goldRate)+'/s';
- el('gold').textContent=me?String(Math.floor(me.gold)):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);
+ el('gold').textContent=me?String(Math.floor(me.gold)):'0';updateTerritoryCounter(owned);el('score').textContent='SCORE '+(me?.score||0);
  el('rank-label').textContent=fieldRank(me?.score||0);
  el('online').textContent=(mode==='single'?String(current?.players.length||0):String(current?.players.filter(p=>p.connected).length||0))+'/'+(current?.capacity||50);
  el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
