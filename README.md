@@ -33,8 +33,8 @@ The world is shared by all clients on one server. The server saves snapshots to 
 
 - The battlefield fills the screen. A floating dock at the bottom contains Command, Build, and Units panels.
 - Click one of your land tiles to select it. Click adjacent neutral or rival land to expand; there are no drawn routes. The Command panel sets the troop ratio to 25%, 50%, 75%, or 100%.
-- Build hotkeys 1–6 select City, Factory, Port, Defense Post, Market, and Farm. Select a structure, then click one of your own territories.
-- Ports must be placed on a coastline. Cities can be upgraded to level 4. Factories and Markets increase gold income; Farms improve troop growth; Defense Posts make a tile harder to capture.
+- Build hotkeys 1–7 select City, Factory, Port, Defense Post, Market, Farm, and Highway. Hover over a building to read its description, cost, and placement rules. Select a structure, then click one of your own territories.
+- Ports must be placed on a coastline and enable settlement ferries and trade boats. Cities can be upgraded to level 4. Factories and Markets increase gold income; Farms improve troop recovery; Defense Posts make a tile harder to capture. Highways connect to cities, factories, markets, or other highway segments and add gold income.
 - Solo match setup includes FFA, Duos, Trios, and Squads; Continents, Island Chain, Pangaea, and Highlands maps; 0–7 AI opponents; four AI difficulty levels; and a configurable land-win target. Team modes automatically add enough AI commanders to form opposing teams.
 - Solo campaigns can be paused, resumed, or sped up to 2×/4×. WASD pans the camera, Q/E zooms, C centers, M toggles the grid, and Space pauses.
 - Solo campaigns can be saved locally, loaded, exported as portable JSON files, or imported from another save file.
