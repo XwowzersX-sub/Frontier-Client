@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import './style.css';
+import { WorldRenderer } from './world-renderer';
 
 const env = import.meta.env;
 const supabase = createClient(
@@ -53,7 +54,7 @@ app.innerHTML = `
  <button id="settings-save" class="primary">✓ SAVE SETTINGS</button>
  </div></div>
 <div id="game-screen" class="game-screen hidden">
- <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas>
+ <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas><canvas id="map-overlay" aria-hidden="true"></canvas>
  <div class="world-topbar">
   <div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div>
   <div class="world-metrics"><span>👑 <b id="commander-label">COMMANDER</b></span><span>🪙 <b id="gold">0</b></span><span>🗺 <b id="territory">0</b></span><span>🏅 <b id="rank-label">IRON</b></span><span>⏱ <b id="turn">0</b></span><span>⌛ <b id="time-left">∞</b></span><span>🌐 <b id="online">0/50</b></span><span>🌎 <b id="world-name">—</b></span><span>🔁 <b id="round">1</b></span></div>
@@ -110,7 +111,8 @@ let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='random',soloBotCount=2
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 let cameraZoom=8,cameraX=500,cameraY=500,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null,hoverTile=-1;
 let requestedChunks=new Set<string>(),receivedChunks=new Set<string>();
-const canvas=el('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
+const canvas=el('map') as HTMLCanvasElement,overlayCanvas=el('map-overlay') as HTMLCanvasElement,ctx=overlayCanvas.getContext('2d')!;
+let worldRenderer:WorldRenderer|null=null;try{worldRenderer=new WorldRenderer(canvas);}catch(error){console.error('Could not initialize the GPU renderer:',error);report('WebGL2 is required for the map renderer.');}
 const miniMap=el('mini-map') as HTMLCanvasElement,miniCtx=miniMap.getContext('2d')!;
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
@@ -194,26 +196,59 @@ function requestChunksForView(){
  list.sort((a,b)=>a.d-b.d);const take=list.slice(0,36);
  if(take.length){for(const v of take)requestedChunks.add(v.x+':'+v.y);socket.send(JSON.stringify({type:'chunks',chunks:take.map(v=>({x:v.x,y:v.y}))}));}
 }
+function latticeNoise(x:number,y:number,seed:number){
+ let n=(Math.imul(x|0,374761393)^Math.imul(y|0,668265263)^Math.imul(seed|0,1442695041))|0;
+ n=Math.imul(n^(n>>>13),1274126177);
+ return((n^(n>>>16))>>>0)/4294967295;
+}
+function valueNoise(x:number,y:number,seed:number){
+ const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;
+ const sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);
+ const a=latticeNoise(ix,iy,seed),b=latticeNoise(ix+1,iy,seed),c=latticeNoise(ix,iy+1,seed),d=latticeNoise(ix+1,iy+1,seed);
+ const top=a+(b-a)*sx,bottom=c+(d-c)*sx;
+ return top+(bottom-top)*sy;
+}
 function terrainAt(x:number,y:number,mapId:string,seed:number):Tile['terrain']{
  const nx=(x-WORLD_WIDTH/2)/(WORLD_WIDTH/2),ny=(y-WORLD_HEIGHT/2)/(WORLD_HEIGHT/2);
- const wave=Math.sin(x*.055+seed)*.42+Math.cos(y*.073-seed*.7)*.36+Math.sin((x+y)*.031+seed*1.4)*.27+Math.cos((x-y)*.039-seed)*.2;
- const n=Math.abs(Math.sin((x+seed*31.7)*12.9898+(y-seed*17.3)*78.233)*43758.5453)%1;
+ const warpX=(valueNoise(x*.004,y*.004,seed+811)-.5)*44;
+ const warpY=(valueNoise(x*.004,y*.004,seed+977)-.5)*44;
+ const px=x+warpX,py=y+warpY;
+ const macro=valueNoise(px*.0032,py*.0032,seed+11)-.5;
+ const regional=valueNoise(px*.012,py*.012,seed+73)-.5;
+ const detail=valueNoise(px*.04,py*.04,seed+137)-.5;
+ const field=macro*.62+regional*.28+detail*.10;
  const d1=Math.hypot((nx+.48)*.94,(ny+.05)*1.12),d2=Math.hypot((nx-.43)*1.05,(ny-.1)*1.06);
- let land=wave>-.2;
- if(mapId==='islands')land=wave>.18;
- if(mapId==='pangaea')land=nx*nx*.86+ny*ny*1.2<.82&&wave>-.95;
- if(mapId==='highlands')land=wave>-.32;
- if(mapId==='twin-worlds')land=(d1<.73||d2<.72)&&wave>-.48;
- if(mapId==='inland-sea')land=wave>-.18&&!(Math.pow(nx/.42,2)+Math.pow(ny/.34,2)<1);
- if(mapId==='atolls'){const r1=Math.abs(Math.hypot(nx+.42,ny+.08)-.34)<.15,r2=Math.abs(Math.hypot(nx-.4,ny-.13)-.3)<.14;land=r1||r2||(wave>.45&&Math.abs(nx)<.8);}
- if(mapId==='supercontinent')land=Math.abs(nx)<.91&&Math.abs(ny)<.82&&wave>-.78;
- if(mapId==='fractal')land=wave>-.05;
- if(mapId==='earthlike')land=(wave>-.08&&(nx<.28||ny>-.38))||(d1<.62&&wave>-.55);
+ const key=String(mapId||'continents').toLowerCase().replace(/[^a-z]+/g,'-');
+ let land=false;
+ if(key==='islands'||key==='island-chain')land=field>.12;
+ else if(key==='pangaea'){
+  const radius=Math.sqrt(nx*nx*.86+ny*ny*1.2);
+  land=field+(.88-radius)*.55>-.05;
+  if(Math.abs(nx+.16)<.035&&Math.abs(ny-.02)<.16)land=false;
+ }else if(key==='highlands')land=field>-.12;
+ else if(key==='twin-worlds')land=field+(.9-Math.min(d1/.73,d2/.72))*.44>-.05;
+ else if(key==='inland-sea'){
+  const seaRadius=Math.sqrt(Math.pow(nx/.42,2)+Math.pow(ny/.34,2));
+  land=field>-.03&&seaRadius>.92+detail*.24;
+ }else if(key==='atolls'){
+  const ring1=Math.abs(Math.hypot(nx+.42,ny+.08)-.34);
+  const ring2=Math.abs(Math.hypot(nx-.4,ny-.13)-.3);
+  const atoll=Math.max(1-ring1/.17,1-ring2/.16);
+  land=atoll+field*.22>.12||(field>.3&&Math.abs(nx)<.8);
+ }else if(key==='supercontinent'){
+  const edge=Math.max(Math.abs(nx)/.91,Math.abs(ny)/.82);
+  land=field+(.98-edge)*.55>-.2;
+ }else if(key==='fractal'||key==='fractal-wilds')land=field>-.04;
+ else if(key==='earthlike'){
+  const continents=Math.max(field+(.78-d1)*.56,field+(.72-d2)*.48);
+  land=continents>-.08&&(nx<.28||ny>-.38||d1<.62);
+ }else land=field>-.02;
  if(x<2||y<2||x>=WORLD_WIDTH-2||y>=WORLD_HEIGHT-2)land=false;
- if(mapId==='pangaea'&&Math.abs(nx+.16)<.035&&Math.abs(ny-.02)<.16)land=false;
- if(mapId==='inland-sea'&&Math.abs(nx)<.42&&Math.abs(ny)<.34)land=false;
- const mountainChance=mapId==='highlands'?.77:.955;
- return !land?'water':n>mountainChance?'mountain':n>.66?'forest':'plain';
+ if(!land)return'water';
+ const elevation=macro*.45+regional*.4+detail*.15;
+ const moisture=valueNoise(px*.021,py*.021,seed+313)-.5;
+ if(elevation>(key==='highlands'?.075:.205))return'mountain';
+ return moisture>.035?'forest':'plain';
 }
 function baseTileAt(index:number,mapId=mapIdFromTitle(game?.mapName||'continents'),seed=game?.mapSeed||1):Tile{
  const x=index%WORLD_WIDTH,y=Math.floor(index/WORLD_WIDTH);
@@ -416,7 +451,8 @@ function areAllies(attackerId:string,ownerId:string|null){
 }
 function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,percent:number){
  if(!game)return 0;
- const source=game.tiles[sourceIndex]||getGameTile(sourceIndex),target=game.tiles[targetIndex]||getGameTile(targetIndex),attacker=game.players.find(p=>p.id===attackerId);game.tiles[sourceIndex]=source;game.tiles[targetIndex]=target;
+ const source=game.tiles[sourceIndex]||getGameTile(sourceIndex),target=game.tiles[targetIndex]||getGameTile(targetIndex),attacker=game.players.find(p=>p.id===attackerId);
+ game.tiles[sourceIndex]=source;game.tiles[targetIndex]=target;
  if(!source||!target||!attacker||source.owner!==attackerId||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
  const sx=sourceIndex%game.width,sy=Math.floor(sourceIndex/game.width),tx=targetIndex%game.width,ty=Math.floor(targetIndex/game.width);
  const dx=tx-sx,dy=ty-sy,distance=Math.hypot(dx,dy);
@@ -426,54 +462,36 @@ function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,perc
  if(sent<1){if(attackerId==='human')report('⚔ Not enough troops in the selected territory.');return 0;}
  source.troops-=sent;
  const dirX=dx/(distance||1),dirY=dy/(distance||1);
- const maxRadius=Math.min(MAX_MARCH_DISTANCE,Math.max(3,Math.floor(3+Math.sqrt(sent)*.34)));
- const queue:{index:number;troops:number;depth:number}[]=[{index:sourceIndex,troops:sent,depth:0}];
- const visited=new Set<number>([sourceIndex]);let captured=0,processed=0,remainingArmy=0;
- const getNeighbors=(index:number)=>{
-  const x=index%game!.width,y=Math.floor(index/game!.width),out:number[]=[];
-  for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++){if(!ox&&!oy)continue;const nx=x+ox,ny=y+oy;if(nx>=0&&nx<game!.width&&ny>=0&&ny<game!.height)out.push(ny*game!.width+nx);}
-  return out;
- };
- while(queue.length&&processed<220){
-  const wave=queue.shift()!;processed++;
-  if(wave.depth>=maxRadius||wave.troops<3)continue;
-  const wx=wave.index%game.width,wy=Math.floor(wave.index/game.width);
-  const candidates=getNeighbors(wave.index).filter(next=>{
-   if(visited.has(next))return false;
-   const tile=getGameTile(next);game!.tiles[next]=tile;
-   if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner===attackerId||areAllies(attackerId,tile.owner))return false;
-   const nx=next%game!.width,ny=Math.floor(next/game!.width),rx=nx-sx,ry=ny-sy,radial=Math.hypot(rx,ry);
-   if(radial>maxRadius||radial<.1)return false;
-   const forward=(rx*dirX+ry*dirY)/(radial||1);
-   return forward>-.08;
-  }).map(next=>{
-   const nx=next%game!.width,ny=Math.floor(next/game!.width),rx=nx-sx,ry=ny-sy,radial=Math.hypot(rx,ry);
-   const forward=(rx*dirX+ry*dirY)/(radial||1),lateral=Math.abs(rx*dirY-ry*dirX)/(radial||1);
-   const tile=game!.tiles[next]!;
-   return{next,score:forward*1.7-lateral*.48+(tile.owner?-.08:0)+Math.random()*.23};
-  }).sort((a,b)=>b.score-a.score);
-  if(!candidates.length){remainingArmy+=wave.troops;continue;}
-  const branchCount=Math.min(wave.depth<2?3:2,candidates.length,Math.max(1,Math.floor(wave.troops/4)));
-  const chosen=candidates.slice(0,branchCount);
-  const share=Math.floor(wave.troops/branchCount);
-  for(const option of chosen){
-   const next=option.next;visited.add(next);
-   const tile=game.tiles[next]!;
-   const defender=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
-   const distanceLoss=Math.max(1,Math.ceil(share*(.025+wave.depth*.004)));
-   const effective=share-distanceLoss;
-   if(effective<=defender){
-    tile.troops=Math.max(0,defender-effective);
-    continue;
-   }
-   if(tile.owner){const previous=game.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
-   const survivors=effective-defender-1;
-   tile.owner=attackerId;tile.troops=survivors;attacker.score++;captured++;
-   if(survivors>=3)queue.push({index:next,troops:survivors,depth:wave.depth+1});
-   else remainingArmy+=survivors;
-  }
+ const radius=Math.min(MAX_MARCH_DISTANCE,Math.max(3,2.2+Math.sqrt(sent)*.38));
+ const extent=Math.ceil(radius*1.45),fieldSeed=(game.mapSeed||1)+sourceIndex*17+targetIndex*31+sent*13;
+ const minX=Math.max(0,sx-extent),maxX=Math.min(game.width-1,sx+extent);
+ const minY=Math.max(0,sy-extent),maxY=Math.min(game.height-1,sy+extent);
+ const candidates:{index:number;edge:number;pressure:number}[]=[];
+ for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){
+  const rx=x-sx,ry=y-sy,forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
+  const normalized=Math.hypot(lateral/(radius*.86),(forward-radius*.13)/(radius*1.1));
+  const warped=normalized-(valueNoise(x*.16,y*.16,fieldSeed)-.5)*.14;
+  if(warped>=1||forward< -radius*.55||(!rx&&!ry))continue;
+  const falloff=Math.pow(Math.max(0,1-warped),.72);
+  const pressure=sent/(radius*radius*.96)*falloff*(.86+.14*Math.max(0,forward/radius));
+  if(pressure>=1)candidates.push({index:y*game.width+x,edge:warped,pressure});
  }
- if(attackerId==='human')report(captured?'⚔ Your army spread outward in a widening front, capturing '+captured+' tile'+(captured===1?'':'s')+'. Troops were lost as the wave advanced.':'🛡 The expansion wave ran out of strength before it could capture land.');
+ candidates.sort((a,b)=>a.edge-b.edge);
+ let captured=0;
+ for(const candidate of candidates){
+  const index=candidate.index,tile=game.tiles[index]||getGameTile(index);
+  if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner===attackerId||areAllies(attackerId,tile.owner))continue;
+  const defender=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
+  const required=defender+1;
+  if(candidate.pressure<required){
+   if(tile.owner&&defender>0){tile.troops=Math.max(0,defender-Math.floor(candidate.pressure));game.tiles[index]=tile;}
+   continue;
+  }
+  if(tile.owner){const previous=game.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
+  tile.owner=attackerId;tile.troops=Math.max(0,Math.floor(candidate.pressure-required));game.tiles[index]=tile;
+  attacker.score++;captured++;
+ }
+ if(attackerId==='human')report(captured?'🌐 Your expansion front spread as a broad, direction-biased field, capturing '+captured+' land tiles. Pressure faded toward the edge.':'🛡 The expansion field weakened before it could capture land.');
  return captured;
 }
 function localClaim(sourceIndex:number,targetIndex:number,percent:number){return localMarch('human',sourceIndex,targetIndex,percent)>0;}
@@ -674,60 +692,35 @@ function drawMiniMap(){
  miniCtx.strokeRect(left,top,Math.max(2,viewW),Math.max(2,viewH));miniCtx.shadowBlur=0;
 }
 function draw(){
- const cssW=window.innerWidth,cssH=window.innerHeight;
- const targetWidth=Math.max(1000,Math.round(cssW*1.5)),targetHeight=Math.max(700,Math.round(cssH*1.5));
- if(canvas.width!==targetWidth||canvas.height!==targetHeight){canvas.width=targetWidth;canvas.height=targetHeight;}
- const current=game;ctx.clearRect(0,0,canvas.width,canvas.height);
- if(!current){ctx.fillStyle='#071624';ctx.fillRect(0,0,canvas.width,canvas.height);return;}
- const scale=canvas.width/cssW,tilePx=cameraZoom*scale;
- const cols=Math.ceil(cssW/cameraZoom)+2,rows=Math.ceil(cssH/cameraZoom)+2;
- const left=Math.floor(cameraX-cols/2),top=Math.floor(cameraY-rows/2);
- const ownerMap=new Map(current.players.map(p=>[p.id,p]));
- for(let gy=0;gy<rows;gy++){
-  const wy=top+gy;if(wy<0||wy>=current.height)continue;
-  for(let gx=0;gx<cols;gx++){
-   const wx=left+gx;if(wx<0||wx>=current.width)continue;
-   const index=wy*current.width+wx,tile=current.tiles[index]||baseTileAt(index,current.mapName||'continents',current.mapSeed||1);
-   const owner=tile.owner?ownerMap.get(tile.owner):undefined;
-   const x=(wx-cameraX)*tilePx+canvas.width/2,y=(wy-cameraY)*tilePx+canvas.height/2;
-   if(tile.terrain==='water'){
-    ctx.fillStyle='#12465e';ctx.fillRect(x,y,tilePx+1,tilePx+1);
-    if(tilePx>5){ctx.fillStyle='#256d82';ctx.fillRect(x+1,y+1,tilePx-2,tilePx-2);ctx.fillStyle='#68cfe055';ctx.fillRect(x+tilePx*.2,y+tilePx*.48,Math.max(1,tilePx*.3),1);}
-    continue;
-   }
-   const base=owner?.color||(tile.terrain==='mountain'?'#697986':tile.terrain==='forest'?'#174936':'#547c58');
-   ctx.fillStyle=owner?'#07101b': '#0b1b24';ctx.fillRect(x,y,tilePx+1,tilePx+1);
-   ctx.fillStyle=base;ctx.fillRect(x+Math.max(1,tilePx*.09),y+Math.max(1,tilePx*.09),Math.max(1,tilePx*.82),Math.max(1,tilePx*.82));
-   if(tile.terrain==='mountain'&&tilePx>7){
-    ctx.fillStyle='#c7d7dc';ctx.beginPath();ctx.moveTo(x+tilePx*.2,y+tilePx*.78);ctx.lineTo(x+tilePx*.5,y+tilePx*.18);ctx.lineTo(x+tilePx*.82,y+tilePx*.78);ctx.fill();
-   }else if(tile.terrain==='forest'&&tilePx>9){
-    ctx.fillStyle='#0b382e';ctx.fillRect(x+tilePx*.42,y+tilePx*.28,tilePx*.16,tilePx*.5);
-    ctx.fillStyle='#42a06a';ctx.fillRect(x+tilePx*.23,y+tilePx*.32,tilePx*.54,tilePx*.22);
-   }
-   if(owner&&tile.buildings?.length&&tilePx>10){
-    const glyph:Record<string,string>={city:'C',factory:'F',port:'⚓',defense_post:'D',market:'M',farm:'♣'};
-    ctx.fillStyle='#e9fbff';ctx.font='bold '+Math.max(7,tilePx*.48)+'px monospace';ctx.textAlign='center';
-    ctx.fillText(glyph[tile.buildings[0]!.type]||'•',x+tilePx*.5,y+tilePx*.65);
-   }
-   if(owner&&settings.counts&&tilePx>20){
-    ctx.fillStyle='#06121bcc';ctx.fillRect(x+tilePx*.08,y+tilePx*.7,tilePx*.84,tilePx*.22);
-    ctx.fillStyle='#f1fbff';ctx.font='bold '+Math.max(7,tilePx*.16)+'px monospace';ctx.textAlign='center';
-    ctx.fillText(String(tile.troops),x+tilePx*.5,y+tilePx*.87);
-   }
-   if(index===selectedSource){ctx.strokeStyle='#93f6ff';ctx.lineWidth=Math.max(1.5,tilePx*.12);ctx.shadowColor='#52e5ff';ctx.shadowBlur=10;ctx.strokeRect(x+1,y+1,tilePx-2,tilePx-2);ctx.shadowBlur=0;}
-   if(settings.grid&&tilePx>5){ctx.strokeStyle='#03101a66';ctx.lineWidth=.7;ctx.strokeRect(x,y,tilePx,tilePx);}
-  }
+ const cssW=canvas.clientWidth||window.innerWidth,cssH=canvas.clientHeight||window.innerHeight;
+ const dpr=Math.min(window.devicePixelRatio||1,1.75),bufferW=Math.max(1,Math.round(cssW*dpr)),bufferH=Math.max(1,Math.round(cssH*dpr));
+ if(overlayCanvas.width!==bufferW||overlayCanvas.height!==bufferH){overlayCanvas.width=bufferW;overlayCanvas.height=bufferH;}
+ ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cssW,cssH);
+ const current=game;
+ if(!current){worldRenderer?.clear();return;}
+ if(worldRenderer){
+  try{
+   const mapId=mapIdFromTitle(current.mapName||'continents'),seed=current.mapSeed||1;
+   worldRenderer.draw({width:current.width,height:current.height,tiles:current.tiles,players:current.players,mapName:current.mapName||mapId,mapSeed:seed,cameraX,cameraY,zoom:cameraZoom,showGrid:settings.grid},
+    (x,y)=>terrainAt(x,y,mapId,seed));
+  }catch(error){console.error('GPU world rendering failed:',error);report('GPU renderer error: '+(error instanceof Error?error.message:'unknown error'));worldRenderer=null;}
  }
+ const tilePx=cameraZoom;
  if(current.ships)for(const ship of current.ships){
   let sx=ship.x,sy=ship.y;
   if(ship.path?.length){const at=ship.path[Math.min(ship.step||0,ship.path.length-1)]!;sx=at%current.width;sy=Math.floor(at/current.width);}
-  const x=(sx-cameraX)*tilePx+canvas.width/2,y=(sy-cameraY)*tilePx+canvas.height/2;
-  if(x<-tilePx||y<-tilePx||x>canvas.width+tilePx||y>canvas.height+tilePx)continue;
+  const x=(sx-cameraX)*tilePx+cssW/2,y=(sy-cameraY)*tilePx+cssH/2;
+  if(x<-tilePx||y<-tilePx||x>cssW+tilePx||y>cssH+tilePx)continue;
   ctx.save();ctx.font='bold '+Math.max(9,tilePx*1.15)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='#79ecff';ctx.shadowBlur=9;ctx.fillStyle='#e7fdff';ctx.fillText(ship.kind==='trade'?'⛴':'🚢',x+tilePx/2,y+tilePx/2);ctx.restore();
  }
- if(selectedSource>=0&&hoverTile>=0&&current.tiles[selectedSource]?.owner===myId){
+ if(selectedSource>=0&&selectedSource<current.tiles.length){
+  const sx=selectedSource%current.width,sy=Math.floor(selectedSource/current.width);
+  const x=(sx-cameraX)*tilePx+cssW/2,y=(sy-cameraY)*tilePx+cssH/2;
+  if(x>-tilePx&&y>-tilePx&&x<cssW&&y<cssH){ctx.save();ctx.strokeStyle='#93f6ff';ctx.lineWidth=Math.max(1.5,tilePx*.11);ctx.shadowColor='#52e5ff';ctx.shadowBlur=10;ctx.strokeRect(x+1,y+1,tilePx-2,tilePx-2);ctx.restore();}
+ }
+ if(selectedSource>=0&&hoverTile>=0){
   const sx=selectedSource%current.width,sy=Math.floor(selectedSource/current.width),tx=hoverTile%current.width,ty=Math.floor(hoverTile/current.width);
-  if(Math.hypot(sx-tx,sy-ty)<=MAX_MARCH_DISTANCE){ctx.save();ctx.strokeStyle='#82f4ffcc';ctx.lineWidth=Math.max(1.5,tilePx*.12);ctx.setLineDash([tilePx*.7,tilePx*.5]);ctx.shadowColor='#54eaff';ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo((sx-cameraX+.5)*tilePx+canvas.width/2,(sy-cameraY+.5)*tilePx+canvas.height/2);ctx.lineTo((tx-cameraX+.5)*tilePx+canvas.width/2,(ty-cameraY+.5)*tilePx+canvas.height/2);ctx.stroke();ctx.restore();}
+  if(Math.hypot(sx-tx,sy-ty)<=MAX_MARCH_DISTANCE){ctx.save();ctx.strokeStyle='#82f4ffcc';ctx.lineWidth=Math.max(1.5,tilePx*.12);ctx.setLineDash([tilePx*.7,tilePx*.5]);ctx.shadowColor='#54eaff';ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo((sx-cameraX+.5)*tilePx+cssW/2,(sy-cameraY+.5)*tilePx+cssH/2);ctx.lineTo((tx-cameraX+.5)*tilePx+cssW/2,(ty-cameraY+.5)*tilePx+cssH/2);ctx.stroke();ctx.restore();}
  }
 }
 function fieldRank(score:number){
