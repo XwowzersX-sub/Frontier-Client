@@ -16,83 +16,65 @@ type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:numb
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; updates?:Array<[number,Tile]> };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
-<div id="menu-screen" class="screen menu-screen">
- <div class="menu-brand">PIXEL <span>FRONTIER</span><small>THE WORLD IS YOURS TO CLAIM</small></div>
- <div class="menu-card">
-  <div class="eyebrow">✦ COMMANDER ACCESS</div>
-  <h1>Choose your<br><em>frontier.</em></h1>
-  <label class="field-label" for="nickname">COMMANDER NAME</label><input id="nickname" maxlength="18" placeholder="Enter nickname" autocomplete="nickname">
-  <div class="menu-actions"><button id="menu-single" class="primary big">🎮 SINGLE PLAYER <small>CONFIGURE A SOLO CAMPAIGN</small></button><button id="menu-multi" class="secondary big">🌐 JOIN LIVE MATCH <small>RANDOM WORLD · UP TO 50 COMMANDERS</small></button></div>
-  <details class="match-setup" open><summary>🎮 SOLO MATCH SETUP</summary>
-   <div class="setup-grid">
-    <label>MODE <select id="solo-mode"><option value="ffa">Free for All</option><option value="duos">Duos</option><option value="trios">Trios</option><option value="squads">Squads</option></select></label>
-    <label>🗺 MAP <select id="solo-map"><option value="random">🎲 Random World</option><option value="continents">🌎 Continents</option><option value="islands">🏝 Island Chain</option><option value="pangaea">🌐 Pangaea</option><option value="highlands">⛰ Highlands</option><option value="twin-worlds">🌗 Twin Worlds</option><option value="inland-sea">🌊 Inland Sea</option><option value="atolls">🪸 Atolls</option><option value="supercontinent">🧭 Supercontinent</option><option value="fractal">🌀 Fractal Wilds</option><option value="earthlike">🌍 Earthlike</option></select></label>
-    <label>🧭 START REGION <select id="start-region"><option value="auto">🎲 Anywhere</option><option value="northwest">↖ Northwest</option><option value="north">↑ North</option><option value="northeast">↗ Northeast</option><option value="west">← West</option><option value="center" selected>◎ Center</option><option value="east">→ East</option><option value="southwest">↙ Southwest</option><option value="south">↓ South</option><option value="southeast">↘ Southeast</option></select></label>
-    <label>🤖 AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>12</option><option>16</option><option>20</option><option selected>24</option><option>32</option><option>40</option><option>49</option></select></label>
-    <label>AI DIFFICULTY <select id="solo-difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
-    <label>🏆 WIN CONDITION <select id="solo-win" disabled><option value="80" selected>80% WORLD CONTROL OR LAST STANDING</option></select></label>
-    <label>⏱ MATCH LENGTH <select id="solo-length"><option value="0" selected>Unlimited</option><option value="10">10 Minutes</option><option value="20">20 Minutes</option><option value="40">40 Minutes</option></select></label>
-   </div>
-  </details>
-  <details class="sandbox-settings"><summary>🧪 SANDBOX MODIFIERS</summary>
-   <div class="sandbox-grid">
-    <label><input id="sandbox-random" type="checkbox"> RANDOM SPAWN</label>
-    <label><input id="sandbox-gold" type="checkbox"> INFINITE GOLD</label>
-    <label><input id="sandbox-troops" type="checkbox"> INFINITE TROOPS</label>
-    <label><input id="sandbox-anonymous" type="checkbox"> ANONYMOUS NAMES</label>
-   </div>
-  </details>
-  <details class="account-details"><summary>👤 ACCOUNT / SIGN IN</summary><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your account identity.</p></details>
-  <button id="menu-settings" class="text-button">⚙ SETTINGS</button>
- </div><div class="menu-version">PIXEL FRONTIER · REALM CONQUEST · BETA</div>
+<div id="menu-screen" class="screen home-screen">
+ <header class="home-topbar">
+  <div class="home-logo"><b>PIXEL <span>FRONTIER</span></b><small>REALM CONQUEST</small></div>
+  <div class="home-toolbar">
+   <div class="network-pill"><i id="home-network-dot"></i><span id="home-connection">NETWORK READY</span></div>
+   <button id="menu-settings" class="home-icon-btn">⚙ SETTINGS</button>
+  </div>
+ </header>
+ <main class="home-layout">
+  <section class="home-primary">
+   <div class="home-intro"><div class="eyebrow">THE WORLD IS YOURS TO CLAIM · BETA SEASON</div><h1>BUILD AN EMPIRE.<br><em>SHAPE THE FRONTIER.</em></h1><p>Expand across a living pixel world, grow your nation, and compete for the map.</p></div>
+   <section class="featured-world-card">
+    <div class="featured-card-top"><span><i class="live-dot"></i> MULTIPLAYER NETWORK</span><b>PUBLIC WORLD · 50 PLAYER CAP</b></div>
+    <div class="featured-card-body">
+     <div class="featured-copy"><div class="eyebrow">01 / LIVE WORLD</div><h2>ENTER THE<br><em>GLOBAL FRONTIER.</em></h2><p>Join the shared multiplayer world and expand alongside other commanders. The server wakes when you connect.</p><div class="world-tags"><span>1000 × 1000 MAP</span><span>LIVE EXPANSION</span><span>SHARED MATCH</span></div></div>
+     <div class="world-preview" aria-hidden="true"><div class="preview-grid"></div><div class="preview-orbit orbit-one"></div><div class="preview-orbit orbit-two"></div><div class="preview-land preview-land-a"></div><div class="preview-land preview-land-b"></div><div class="preview-land preview-land-c"></div><span class="preview-cross">＋</span><b>WORLD 01</b><small>LIVE SERVER</small></div>
+    </div>
+    <div class="featured-card-bottom"><div><b>READY WHEN YOU ARE</b><small>One click to join the ongoing world.</small></div><button id="menu-multi" class="home-primary-btn">JOIN LIVE WORLD <span>→</span></button></div>
+   </section>
+   <div class="home-lower-strip"><div><span class="tiny-status"></span><b>ONE SHARED WORLD</b><small>Meet other commanders in the same match.</small></div><div><b>YOUR STRATEGY</b><small>Expand, build, and manage your national troop pool.</small></div></div>
+  </section>
+  <aside class="home-sidebar">
+   <section class="commander-panel"><div class="panel-heading"><span>02 / COMMANDER PROFILE</span><b>IDENTITY</b></div><label class="field-label" for="nickname">YOUR DISPLAY NAME</label><input id="nickname" maxlength="18" placeholder="Enter commander name" autocomplete="nickname"><div class="profile-foot"><span class="profile-swatch"></span><span>YOUR NAME IS SHOWN IN MATCHES</span></div></section>
+   <section class="mode-panel"><div class="panel-heading"><span>03 / GAME MODES</span><b>CHOOSE A MODE</b></div><button id="menu-single" class="mode-choice"><span class="mode-icon">▦</span><span class="mode-copy"><b>SOLO CAMPAIGN</b><small>Set up a world with AI nations.</small></span><span class="mode-arrow">→</span></button><div class="mode-divider"></div><div class="mode-note"><span>✦</span><p><b>YOUR WORLD, YOUR RULES</b><small>Choose the map, AI count, difficulty, and starting region before launch.</small></p></div></section>
+   <details class="account-panel"><summary><span>ACCOUNT & SIGN IN</span><span class="account-summary-right">OPTIONAL ＋</span></summary><form id="login"><input id="email" type="email" placeholder="Email address" required><input id="password" type="password" minlength="6" placeholder="Password" required><button class="primary">SIGN IN</button></form><div class="auth-actions"><button id="signup" class="secondary">CREATE ACCOUNT</button><button id="resend" class="secondary">RESEND VERIFY EMAIL</button><button id="logout" class="secondary hidden">SIGN OUT</button></div><p id="auth-message" class="muted">Sign in to keep your account identity.</p></details>
+  </aside>
+ </main>
+ <footer class="home-footer"><span>PIXEL FRONTIER <i>·</i> REALM CONQUEST</span><span>BUILD YOUR NATION. CLAIM YOUR WORLD.</span></footer>
 </div>
-<div id="settings-screen" class="screen modal-screen hidden"><div class="settings-card"><div class="modal-head"><div><div class="eyebrow">⚙ GAME OPTIONS</div><h2>SETTINGS</h2></div><button id="settings-close" class="secondary">CLOSE ✕</button></div>
- <label class="setting-row">PIXEL SCALE <select id="pixel-scale"><option value="0.5">Micro pixels</option><option value="0.75" selected>Fine pixels</option><option value="1">Standard</option></select></label>
- <label class="setting-row">MAP GRID <input id="grid-toggle" type="checkbox" checked></label>
- <label class="setting-row">SOUND EFFECTS <input id="sound-toggle" type="checkbox"></label>
- <label class="setting-row">SHOW TROOP COUNTS <input id="count-toggle" type="checkbox" checked></label>
- <button id="settings-save" class="primary">✓ SAVE SETTINGS</button>
- </div></div>
+<div id="solo-setup-screen" class="screen modal-screen hidden">
+ <div class="settings-card solo-setup-card">
+  <div class="modal-head"><div><div class="eyebrow">✦ CAMPAIGN CONFIGURATION</div><h2>SOLO CAMPAIGN</h2></div><button id="solo-back" class="secondary">← BACK</button></div>
+  <p class="solo-setup-intro">Shape your world before the first tile is claimed. Your settings apply to this campaign only.</p>
+  <details class="match-setup" open><summary>⚔ MATCH SETTINGS</summary><div class="setup-grid">
+   <label>MODE <select id="solo-mode"><option value="ffa">Free for All</option><option value="duos">Duos</option><option value="trios">Trios</option><option value="squads">Squads</option></select></label>
+   <label>🗺 MAP <select id="solo-map"><option value="random">🎲 Random World</option><option value="continents">🌎 Continents</option><option value="islands">🏝 Island Chain</option><option value="pangaea">🌐 Pangaea</option><option value="highlands">⛰ Highlands</option><option value="twin-worlds">🌗 Twin Worlds</option><option value="inland-sea">🌊 Inland Sea</option><option value="atolls">🪸 Atolls</option><option value="supercontinent">🧭 Supercontinent</option><option value="fractal">🌀 Fractal Wilds</option><option value="earthlike">🌍 Earthlike</option></select></label>
+   <label>🧭 START REGION <select id="start-region"><option value="auto">🎲 Anywhere</option><option value="northwest">↖ Northwest</option><option value="north">↑ North</option><option value="northeast">↗ Northeast</option><option value="west">← West</option><option value="center" selected>◎ Center</option><option value="east">→ East</option><option value="southwest">↙ Southwest</option><option value="south">↓ South</option><option value="southeast">↘ Southeast</option></select></label>
+   <label>🤖 AI OPPONENTS <select id="solo-bots"><option>0</option><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>12</option><option>16</option><option>20</option><option selected>24</option><option>32</option><option>40</option><option>49</option></select></label>
+   <label>AI DIFFICULTY <select id="solo-difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
+   <label>🏆 WIN CONDITION <select id="solo-win" disabled><option value="80" selected>80% WORLD CONTROL OR LAST STANDING</option></select></label>
+   <label>⏱ MATCH LENGTH <select id="solo-length"><option value="0" selected>Unlimited</option><option value="10">10 Minutes</option><option value="20">20 Minutes</option><option value="40">40 Minutes</option></select></label>
+  </div></details>
+  <details class="sandbox-settings"><summary>🧪 SANDBOX MODIFIERS</summary><div class="sandbox-grid"><label><input id="sandbox-random" type="checkbox"> RANDOM SPAWN</label><label><input id="sandbox-gold" type="checkbox"> INFINITE GOLD</label><label><input id="sandbox-troops" type="checkbox"> INFINITE TROOPS</label><label><input id="sandbox-anonymous" type="checkbox"> ANONYMOUS NAMES</label></div></details>
+  <div class="solo-start-row"><div><b>CAMPAIGN READY?</b><small>You can export or save your campaign in-game.</small></div><button id="solo-start" class="primary solo-start-btn">START CAMPAIGN <span>→</span></button></div>
+ </div>
+</div>
+<div id="settings-screen" class="screen modal-screen hidden"><div class="settings-card"><div class="modal-head"><div><div class="eyebrow">⚙ GAME OPTIONS</div><h2>SETTINGS</h2></div><button id="settings-close" class="secondary">CLOSE ✕</button></div><label class="setting-row">PIXEL SCALE <select id="pixel-scale"><option value="0.5">Micro pixels</option><option value="0.75" selected>Fine pixels</option><option value="1">Standard</option></select></label><label class="setting-row">MAP GRID <input id="grid-toggle" type="checkbox" checked></label><label class="setting-row">SOUND EFFECTS <input id="sound-toggle" type="checkbox"></label><label class="setting-row">SHOW TROOP COUNTS <input id="count-toggle" type="checkbox" checked></label><button id="settings-save" class="primary">✓ SAVE SETTINGS</button></div></div>
 <div id="game-screen" class="game-screen hidden">
  <canvas id="map" width="2400" height="1600" aria-label="Fullscreen Pixel Frontier world map"></canvas><canvas id="map-overlay" aria-hidden="true"></canvas>
- <div class="world-topbar">
-  <div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div>
-  <div class="world-metrics"><span>👑 <b id="commander-label">COMMANDER</b></span><span>🪙 <b id="gold">0</b></span><span>🗺 <b id="territory">0</b></span><span>🏅 <b id="rank-label">IRON</b></span><span>⏱ <b id="turn">0</b></span><span>⌛ <b id="time-left">∞</b></span><span>🌐 <b id="online">0/50</b></span><span>🌎 <b id="world-name">—</b></span><span>🔁 <b id="round">1</b></span></div>
-  <div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙ SETTINGS</button><button id="main-menu" class="world-icon">⌂ MENU</button></div>
- </div>
+ <div class="world-topbar"><div class="world-brand"><b>✦ PIXEL FRONTIER</b><span id="connection">● OFFLINE</span></div><div class="world-metrics"><span>👑 <b id="commander-label">COMMANDER</b></span><span>🪙 <b id="gold">0</b></span><span>🗺 <b id="territory">0</b></span><span>🏅 <b id="rank-label">IRON</b></span><span>⏱ <b id="turn">0</b></span><span>⌛ <b id="time-left">∞</b></span><span>🌐 <b id="online">0/50</b></span><span>🌎 <b id="world-name">—</b></span><span>🔁 <b id="round">1</b></span></div><div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙ SETTINGS</button><button id="main-menu" class="world-icon">⌂ MENU</button></div></div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
  <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">🧭 CLICK ANY LAND DIRECTION TO EXPAND · SEND 25% OF YOUR TOTAL TROOPS</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
  <div class="minimap-panel"><div>🧭 WORLD RADAR <span>CLICK TO JUMP</span></div><canvas id="mini-map" width="180" height="180"></canvas></div>
  <div class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ SELECTED TILE</small><b id="available-troops">0</b></div><div class="troop-stock"><div class="troop-stock-label"><small>⚔ TOTAL ARMY</small><b id="troop-cap-label">0 / 0</b></div><div class="troop-stock-track"><i id="troop-cap-fill"></i></div></div></div>
-  <div class="dock-main">
-   <div class="dock-tabs"><button class="dock-tab active" data-tab="command">⚔ COMMAND</button><button class="dock-tab" data-tab="build">🏗 BUILD</button><button class="dock-tab" data-tab="units">🎒 UNITS</button></div>
-   <div id="command-panel" class="dock-panel">
-    <div class="ratio-control"><small>⚔ NATION-WIDE EXPANSION</small><div class="troop-choices"><button data-force="25" class="chosen">25%</button><button data-force="50">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
-    <div class="economy-rates"><div><small>⚔ TROOP GROWTH</small><b id="troop-rate-label">+0.0/s</b></div><div><small>🪙 GOLD INCOME</small><b id="gold-rate-label">+1.0/s</b></div></div>
-    <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="boat-mode" class="dock-action">🚢 SETTLE ISLAND <small>60 GOLD · PORT</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div>
-   </div>
-   <div id="build-panel" class="dock-panel hidden">
-    <div class="build-grid">
-     <button data-building="city"><kbd>1</kbd><b>▦ CITY</b><small>100 G</small></button>
-     <button data-building="factory"><kbd>2</kbd><b>⚙ FACTORY</b><small>150 G</small></button>
-     <button data-building="port"><kbd>3</kbd><b>⚓ PORT</b><small>120 G</small></button>
-     <button data-building="defense_post"><kbd>4</kbd><b>▥ DEFENSE</b><small>80 G</small></button>
-     <button data-building="market"><kbd>5</kbd><b>¤ MARKET</b><small>130 G</small></button>
-     <button data-building="farm"><kbd>6</kbd><b>♣ FARM</b><small>80 G</small></button>
-     
-    </div><div class="dock-hint" id="build-hint">🏗 Choose a structure, then click one of your land tiles. Ports need a coastline.</div>
-   </div>
-   <div id="units-panel" class="dock-panel hidden">
-    <div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +15</small></button><button id="clear-selection" class="dock-action">✕ CLEAR SELECTION</button></div>
-    <div class="quick-chat">
-     <div class="chat-quick-buttons"><button data-chat="👋 Hello!">👋</button><button data-chat="👍 Nice!">👍</button><button data-chat="🤝 Team up?">🤝</button><button data-chat="🛡️ Defending here">🛡️</button><button data-chat="🏰 Building up">🏰</button></div>
-     <div class="chat-entry"><input id="chat-input" maxlength="80" placeholder="Send a quick message…"><button id="send-chat" class="dock-action">SEND</button></div>
-    </div>
-    <div id="solo-save-actions" class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div>
-    <div class="dock-hint">🧭 Click any neutral or rival land in the direction you want to expand. No source selection needed: your nation automatically sends the selected share of its total troops. WASD pans · Q/E zoom · C centers · M grid · Space pause.</div>
-   </div>
-
+  <div class="dock-main"><div class="dock-tabs"><button class="dock-tab active" data-tab="command">⚔ COMMAND</button><button class="dock-tab" data-tab="build">🏗 BUILD</button><button class="dock-tab" data-tab="units">🎒 UNITS</button></div>
+   <div id="command-panel" class="dock-panel"><div class="ratio-control"><small>⚔ NATION-WIDE EXPANSION</small><div class="troop-choices"><button data-force="25" class="chosen">25%</button><button data-force="50">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div><div class="economy-rates"><div><small>⚔ TROOP GROWTH</small><b id="troop-rate-label">+0.0/s</b></div><div><small>🪙 GOLD INCOME</small><b id="gold-rate-label">+1.0/s</b></div></div><div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="boat-mode" class="dock-action">🚢 SETTLE ISLAND <small>60 GOLD · PORT</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div></div>
+   <div id="build-panel" class="dock-panel hidden"><div class="build-grid"><button data-building="city"><kbd>1</kbd><b>▦ CITY</b><small>100 G</small></button><button data-building="factory"><kbd>2</kbd><b>⚙ FACTORY</b><small>150 G</small></button><button data-building="port"><kbd>3</kbd><b>⚓ PORT</b><small>120 G</small></button><button data-building="defense_post"><kbd>4</kbd><b>▥ DEFENSE</b><small>80 G</small></button><button data-building="market"><kbd>5</kbd><b>¤ MARKET</b><small>130 G</small></button><button data-building="farm"><kbd>6</kbd><b>♣ FARM</b><small>80 G</small></button></div><div class="dock-hint" id="build-hint">🏗 Choose a structure, then click one of your land tiles. Ports need a coastline.</div></div>
+   <div id="units-panel" class="dock-panel hidden"><div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +15</small></button><button id="clear-selection" class="dock-action">✕ CLEAR SELECTION</button></div><div class="quick-chat"><div class="chat-quick-buttons"><button data-chat="👋 Hello!">👋</button><button data-chat="👍 Nice!">👍</button><button data-chat="🤝 Team up?">🤝</button><button data-chat="🛡️ Defending here">🛡️</button><button data-chat="🏰 Building up">🏰</button></div><div class="chat-entry"><input id="chat-input" maxlength="80" placeholder="Send a quick message…"><button id="send-chat" class="dock-action">SEND</button></div></div><div id="solo-save-actions" class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div><div class="dock-hint">🧭 Click any neutral or rival land in the direction you want to expand. No source selection needed: your nation automatically sends the selected share of its total troops. WASD pans · Q/E zoom · C centers · M grid · Space pause.</div></div>
   </div>
   <div class="dock-report"><small>FIELD REPORT</small><p id="report">Choose a game mode to begin.</p><div id="selected-info">No territory selected</div></div>
  </div>
@@ -101,7 +83,7 @@ app.innerHTML = `
 
 const el=(id:string)=>document.getElementById(id)!;
 const report=(value:string)=>{el('report').textContent=value;};
-const setConnection=(value:string,good=false)=>{el('connection').textContent='● '+value;el('connection').className='connection '+(good?'good':'');};
+const setConnection=(value:string,good=false)=>{el('connection').textContent='● '+value;el('connection').className='connection '+(good?'good':'');el('home-connection').textContent=value;el('home-network-dot').classList.toggle('good',good);};
 type Settings={pixelScale:number;grid:boolean;sound:boolean;counts:boolean};
 let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
@@ -156,7 +138,7 @@ function selectLandmass(startIndex:number){
 }
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
-function showScreen(name:'menu'|'game'|'settings'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');}
+function showScreen(name:'menu'|'game'|'settings'|'solo-setup'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');el('solo-setup-screen').classList.toggle('hidden',name!=='solo-setup');}
 function getNickname(){const field=el('nickname') as HTMLInputElement;nickname=(field.value.trim().replace(/[^a-zA-Z0-9 _-]/g,'').slice(0,18)||'Commander');field.value=nickname;localStorage.setItem('frontier-nickname',nickname);el('commander-label').textContent=nickname.toUpperCase();el('hud-name').textContent=nickname;return nickname;}
 function showAccount(user:{email?:string|null}|null){const b=el('logout');b.classList.toggle('hidden',!user);el('auth-message').textContent=user?'Signed in as '+(user.email||'commander'):'Sign in to keep your account identity.';}
 void supabase.auth.getUser().then(({data})=>showAccount(data.user));
@@ -179,7 +161,9 @@ miniMap.addEventListener('click',event=>{
  applyCamera();
 });
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
-el('menu-single').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
+el('menu-single').addEventListener('click',()=>{getNickname();showScreen('solo-setup');});
+el('solo-back').addEventListener('click',()=>showScreen('menu'));
+el('solo-start').addEventListener('click',event=>{event.preventDefault();try{getNickname();startSinglePlayer();showScreen('game');}catch(error){console.error('Single player failed to start:',error);report('Could not start the solo match. Reload the page and try again.');showScreen('menu');}});
 el('menu-multi').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();try{getNickname();showScreen('game');void connect();}catch(error){console.error('Multiplayer failed to start:',error);report('Could not open multiplayer. Check the server configuration and try again.');showScreen('menu');}});
 async function connect(){
  mode='multi';el('solo-toolbar').classList.add('hidden');el('solo-save-actions').classList.add('hidden');if(reconnecting)return;if(serverUrl.includes('YOUR-RENDER')){report('Set VITE_SERVER_URL in GitHub Actions Variables.');return;}
