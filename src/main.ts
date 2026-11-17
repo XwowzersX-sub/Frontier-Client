@@ -8,7 +8,7 @@ const supabase = createClient(
   env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_MPWfzhBBPHCTjz-mH3ff4Q_8G1XSfnm'
 );
 const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.com').replace(/\/$/, '');
-type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
+type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm'|'highway';
 type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
 type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number; territory?:number; troopsTotal?:number; troopMax?:number; troopRate?:number; goldRate?:number };
@@ -83,8 +83,8 @@ app.innerHTML = `
  <div id="floating-dock" class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ SELECTED TILE</small><b id="available-troops">0</b></div><div class="troop-stock"><div class="troop-stock-label"><small>⚔ TOTAL ARMY</small><b id="troop-cap-label">0 / 0</b></div><div class="troop-stock-track"><i id="troop-cap-fill"></i></div></div></div>
   <div class="dock-main"><div class="dock-tabs"><button class="dock-tab active" data-tab="command">⚔ COMMAND</button><button class="dock-tab" data-tab="build">🏗 BUILD</button><button class="dock-tab" data-tab="units">🎒 UNITS</button></div>
-   <div id="command-panel" class="dock-panel"><div class="ratio-control"><small>⚔ NATION-WIDE EXPANSION</small><div class="troop-choices"><button data-force="25" class="chosen">25%</button><button data-force="50">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div><div class="economy-rates"><div><small>⚔ TROOP GROWTH</small><b id="troop-rate-label">+0.0/s</b></div><div><small>🪙 GOLD INCOME</small><b id="gold-rate-label">+1.0/s</b></div></div><div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="boat-mode" class="dock-action">🚢 SETTLE ISLAND <small>60 GOLD · PORT</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div></div>
-   <div id="build-panel" class="dock-panel hidden"><div class="build-grid"><button data-building="city"><kbd>1</kbd><b>▦ CITY</b><small>100 G</small></button><button data-building="factory"><kbd>2</kbd><b>⚙ FACTORY</b><small>150 G</small></button><button data-building="port"><kbd>3</kbd><b>⚓ PORT</b><small>120 G</small></button><button data-building="defense_post"><kbd>4</kbd><b>▥ DEFENSE</b><small>80 G</small></button><button data-building="market"><kbd>5</kbd><b>¤ MARKET</b><small>130 G</small></button><button data-building="farm"><kbd>6</kbd><b>♣ FARM</b><small>80 G</small></button></div><div class="dock-hint" id="build-hint">🏗 Choose a structure, then click one of your land tiles. Ports need a coastline.</div></div>
+   <div id="command-panel" class="dock-panel"><div class="ratio-control"><small>⚔ NATION-WIDE EXPANSION</small><div class="troop-choices"><button data-force="25" class="chosen">25%</button><button data-force="50">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div><div class="economy-rates"><div><small>⚔ TROOP GROWTH</small><b id="troop-rate-label">+0.0/s</b></div><div><small>🪙 GOLD INCOME</small><b id="gold-rate-label">+1.0/s</b></div></div><div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="boat-mode" class="dock-action boat-action">🚤 BOAT FERRY <small>60 GOLD · COASTAL PORT</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div></div>
+   <div id="build-panel" class="dock-panel hidden"><div class="build-grid"><button data-building="city"><kbd>1</kbd><span class="building-icon">🏙️</span><b>CITY</b><small>100 G</small></button><button data-building="factory"><kbd>2</kbd><span class="building-icon">🏭</span><b>FACTORY</b><small>150 G</small></button><button data-building="port"><kbd>3</kbd><span class="building-icon">⚓</span><b>PORT</b><small>120 G</small></button><button data-building="defense_post"><kbd>4</kbd><span class="building-icon">🛡️</span><b>DEFENSE</b><small>80 G</small></button><button data-building="market"><kbd>5</kbd><span class="building-icon">🏪</span><b>MARKET</b><small>130 G</small></button><button data-building="farm"><kbd>6</kbd><span class="building-icon">🌾</span><b>FARM</b><small>80 G</small></button><button data-building="highway"><kbd>7</kbd><span class="building-icon">🛣️</span><b>HIGHWAY</b><small>110 G</small></button></div><div class="building-info" id="building-info" aria-live="polite"></div><div class="dock-hint" id="build-hint">Hover over a structure to see what it does. Select it, then click one of your own land tiles.</div></div>
    <div id="units-panel" class="dock-panel hidden"><div class="unit-actions"><button id="recruit-large" class="dock-action">＋ RECRUIT TROOPS <small>25 GOLD · +15</small></button><button id="clear-selection" class="dock-action">✕ CLEAR SELECTION</button></div><div class="quick-chat"><div class="chat-quick-buttons"><button data-chat="👋 Hello!">👋</button><button data-chat="👍 Nice!">👍</button><button data-chat="🤝 Team up?">🤝</button><button data-chat="🛡️ Defending here">🛡️</button><button data-chat="🏰 Building up">🏰</button></div><div class="chat-entry"><input id="chat-input" maxlength="80" placeholder="Send a quick message…"><button id="send-chat" class="dock-action">SEND</button></div></div><div id="solo-save-actions" class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div><div class="dock-hint">🧭 Click any neutral or rival land in the direction you want to expand. No source selection needed: your nation automatically sends the selected share of its total troops. WASD pans · Q/E zoom · C centers · M grid · Space pause.</div></div>
   </div>
   <div class="dock-report"><small>FIELD REPORT</small><p id="report">Choose a game mode to begin.</p><div id="selected-info">No territory selected</div></div>
@@ -115,7 +115,7 @@ function clearLandmassSelection(){
  selectedLandmassCanvas=null;selectedLandmassMask=null;selectedLandmassSeed=-1;selectedLandmassName='';selectedLandmassSize=0;
 }
 function clearInteractionState(){
- activeBuilding=null;boatMode=false;selectedSource=-1;hoverTile=-1;clearLandmassSelection();
+ activeBuilding=null;boatMode=false;selectedSource=-1;hoverTile=-1;clearLandmassSelection();updateBuildingInfo('city');
  document.querySelectorAll('[data-building]').forEach(button=>button.classList.remove('build-selected'));
  document.querySelectorAll('[data-tab]').forEach(button=>button.classList.toggle('active',(button as HTMLElement).dataset.tab==='command'));
  el('command-panel').classList.remove('hidden');el('build-panel').classList.add('hidden');el('units-panel').classList.add('hidden');
@@ -715,7 +715,7 @@ function advanceLocalExpansions(){
   const expansion=localExpansions[e]!,attacker=current.players.find(p=>p.id===expansion.owner);
   if(!attacker){localExpansions.splice(e,1);continue;}
   const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
-  const batch=Math.max(1,Math.min(96,Math.ceil(expansion.frontWidth/(1+strength))));
+  const batch=Math.max(1,Math.min(5,Math.ceil(expansion.frontWidth/(1+strength))));
   const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
   while(expansion.cursor<end){
    const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
@@ -746,12 +746,15 @@ function advanceLocalExpansions(){
  }
  if(changed||finished){render();checkSoloWinner();}
 }
-setInterval(advanceLocalExpansions,110);
-const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80};
+setInterval(advanceLocalExpansions,250);
+const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80,highway:110};
+const buildingDetails:Record<BuildingType,{name:string;icon:string;description:string;placement:string}>={city:{name:'City',icon:'🏙️',description:'Raises your national troop capacity so your population can grow beyond what your land alone supports.',placement:'Build on owned land · Upgradeable to level 4'},factory:{name:'Factory',icon:'🏭',description:'Produces industrial income and acts as a hub for your growing road network.',placement:'Build on owned land · Upgradeable'},port:{name:'Port',icon:'⚓',description:'A coastal harbor that enables settlement ferries and creates trade connections between shores.',placement:'Must touch water · One per tile'},defense_post:{name:'Defense Post',icon:'🛡️',description:'A fortified outpost that makes its tile harder to capture.',placement:'Build on owned land · One per tile'},market:{name:'Market',icon:'🏪',description:'Generates extra gold income for your nation.',placement:'Build on owned land · Upgradeable'},farm:{name:'Farm',icon:'🌾',description:'Improves your nation’s passive troop recovery over time.',placement:'Build on owned land · Upgradeable'},highway:{name:'Highway',icon:'🛣️',description:'Connects nearby cities, factories, markets and other highway tiles. Each segment adds income, with a bonus when linked to a settlement or industry.',placement:'Build beside a City, Factory, Market or another Highway'}};
+function updateBuildingInfo(type:BuildingType){const info=buildingDetails[type],panel=el('building-info');panel.innerHTML='<div class="building-info-icon">'+info.icon+'</div><div class="building-info-copy"><b>'+info.name+'</b><p>'+info.description+'</p><small>'+info.placement+' · '+buildCosts[type]+' GOLD</small></div>';}
 function localBuild(index:number,type:BuildingType){
  if(!game)return false;const tile=game.tiles[index]||getGameTile(index),me=game.players.find(p=>p.id===myId);game.tiles[index]=tile;if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
  tile.buildings=tile.buildings||[];const existing=tile.buildings.filter(b=>b.type===type);
  if(type==='port'&&!neighborsLocal(index).some(n=>getGameTile(n).terrain==='water')){report('Ports must be built on a coastline.');return false;}
+ if(type==='highway'&&!neighborsLocal(index).some(n=>{const neighbor=getGameTile(n);return neighbor.owner===myId&&(neighbor.buildings||[]).some(b=>['city','factory','market','highway'].includes(b.type));})){report('Highways must connect to a City, Factory, Market, or another Highway.');return false;}
  const max=type==='city'?4:type==='factory'?3:(type==='market'||type==='farm')?3:1;const currentLevel=type==='city'?(existing[0]?.level||0):existing.length;
  if(currentLevel>=max){report('That building is already at its maximum here.');return false;}
  const cost=buildCosts[type]*(type==='city'?currentLevel+1:1);if(!soloInfiniteGold&&me.gold<cost){report('You need '+cost+' gold for this build.');return false;}
@@ -929,7 +932,7 @@ function advanceLocalShips(){
 function troopGrowthPerSecond(troops:number,maxTroops:number,multiplier=1){
  if(maxTroops<=0||troops>=maxTroops)return 0;
  const openFrontScaledPerTick=.01+Math.pow(Math.max(0,troops),.73)/(4*Math.pow(1000,.27));
- return Math.max(0,openFrontScaledPerTick*10*(1-troops/maxTroops)*multiplier);
+ return Math.max(0,openFrontScaledPerTick*10*1.35*(1-troops/maxTroops)*multiplier);
 }
 function localTick(){
  if(!game||mode!=='single'||soloPaused||matchWinner)return;
@@ -947,6 +950,7 @@ function localTick(){
    if(building.type==='port')stats.income+=2;
    if(building.type==='market')stats.income+=4;
    if(building.type==='farm')stats.farms++;
+   if(building.type==='highway')stats.income+=2+(neighborsLocal(i).some(n=>{const neighbor=getGameTile(n);return neighbor.owner===tile.owner&&(neighbor.buildings||[]).some(b=>['city','factory','market','highway'].includes(b.type));})?1:0);
   }
  }
  for(const p of game.players){
@@ -954,7 +958,7 @@ function localTick(){
   const maxTroops=Math.floor(2*(Math.pow(Math.max(1,stats.land),.6)+50)+stats.cityLevels*250);
   const bot=p.id.startsWith('bot-');
   const baseGoldPerSecond=bot ? 0.5 : 1;
-  const troopRate=troopGrowthPerSecond(stats.troops,maxTroops,bot?.5:1)*(1+Math.min(12,stats.farms)*.08);
+  const troopRate=troopGrowthPerSecond(stats.troops,maxTroops,bot?.5:1)*(1+Math.min(12,stats.farms)*.10);
   p.territory=stats.land;p.troopsTotal=stats.troops;p.troopMax=maxTroops;
   p.troopRate=soloInfiniteTroops&&p.id==='human'?0:troopRate;
   p.goldRate=baseGoldPerSecond+stats.income/durationSeconds;
@@ -1039,7 +1043,7 @@ function draw(){
   if(ship.path?.length){const at=ship.path[Math.min(ship.step||0,ship.path.length-1)]!;sx=at%current.width;sy=Math.floor(at/current.width);}
   const x=(sx-cameraX)*tilePx+cssW/2,y=(sy-cameraY)*tilePx+cssH/2;
   if(x<-tilePx||y<-tilePx||x>cssW+tilePx||y>cssH+tilePx)continue;
-  ctx.save();ctx.font='bold '+Math.max(9,tilePx*1.15)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='#79ecff';ctx.shadowBlur=9;ctx.fillStyle='#e7fdff';ctx.fillText(ship.kind==='trade'?'⛴':'🚢',x+tilePx/2,y+tilePx/2);ctx.restore();
+  ctx.save();ctx.font='bold '+Math.max(14,tilePx*1.65)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='#79ecff';ctx.shadowBlur=14;ctx.fillStyle='#e7fdff';ctx.fillText(ship.kind==='trade'?'⛴':'🚤',x+tilePx/2,y+tilePx/2);ctx.restore();
  }
  if(selectedLandmassCanvas&&selectedLandmassSeed===(current.mapSeed||1)){
   const sx=Math.max(0,Math.floor(cameraX-cssW/(2*tilePx))-2),sy=Math.max(0,Math.floor(cameraY-cssH/(2*tilePx))-2);
@@ -1115,9 +1119,9 @@ function updateStats(){
  el('turn').textContent=String(current?.tick||0);
  if(mode==='single'&&soloLengthMinutes>0&&current){const remaining=Math.max(0,soloLengthMinutes*15-current.tick)*4;el('time-left').textContent=Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');}else el('time-left').textContent='∞';
  const hint=el('build-hint');
- if(boatMode)hint.textContent='🚢 Select a coastal Port tile first, then choose an unclaimed coastal landing site. Ferries establish peaceful island settlements.';
- else if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';
- else hint.textContent='Click a neutral or rival land direction to expand. Your national troop pool automatically launches from the nearest outer border. Cities increase capacity; factories and markets add gold.';
+ if(boatMode)hint.textContent='🚤 Select a coastal Port, then click unclaimed coastal land to send a settlement ferry. Boats also connect ports through trade routes.';
+ else if(activeBuilding)hint.textContent='Selected: '+buildingDetails[activeBuilding].name+'. '+buildingDetails[activeBuilding].description+' '+buildingDetails[activeBuilding].placement+'. Press Backspace or Escape to cancel.';
+ else hint.textContent='Choose a building to see its description and placement rules. Cities increase capacity; farms improve recovery; highways and factories grow your economy.';
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
  (el('boat-mode') as HTMLButtonElement).classList.toggle('build-selected',boatMode);
 }
@@ -1166,7 +1170,7 @@ canvas.addEventListener('click',event=>{
 });
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
-document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.addEventListener('click',()=>{activeBuilding=button.dataset.building as BuildingType;document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Build mode: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your territories.');updateStats();}));
+document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>{const type=button.dataset.building as BuildingType;button.addEventListener('mouseenter',()=>updateBuildingInfo(type));button.addEventListener('focus',()=>updateBuildingInfo(type));button.addEventListener('mouseleave',()=>updateBuildingInfo(activeBuilding||'city'));button.addEventListener('blur',()=>updateBuildingInfo(activeBuilding||'city'));button.addEventListener('click',()=>{activeBuilding=type;updateBuildingInfo(type);document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Selected '+buildingDetails[type].name+'. '+buildingDetails[type].description);updateStats();});});
 el('boat-mode').addEventListener('click',()=>{
  if(!game)return;
  if(boatMode){boatMode=false;report('🚢 Ferry mode cancelled.');}
@@ -1207,8 +1211,8 @@ window.addEventListener('keydown',event=>{
  if(event.key.toLowerCase()==='e'){zoomCamera(.12);return;}
  const pans:Record<string,[number,number]>={w:[0,48],s:[0,-48],a:[48,0],d:[-48,0]};
  const pan=pans[event.key.toLowerCase()];if(pan){cameraX+=pan[0];cameraY+=pan[1];applyCamera();return;}
- const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','market','farm'];
- if(key>=1&&key<=6){activeBuilding=list[key-1]!;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}
+ const key=Number(event.key);const list:BuildingType[]=['city','factory','port','defense_post','market','farm','highway'];
+ if(key>=1&&key<=7){activeBuilding=list[key-1]!;updateBuildingInfo(activeBuilding);document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');updateStats();}
 });
 el('lobby-exit').addEventListener('click',()=>{reconnecting=false;if(socket){socket.close();socket=null;}game=null;matchPhase='playing';spawnPlacementActive=false;showScreen('menu');setConnection('NETWORK READY');});
 setInterval(()=>{
@@ -1220,4 +1224,4 @@ setInterval(()=>{
  }
 },500);
 window.addEventListener('resize',()=>{draw();applyCamera();});
-applySettings();showScreen('menu');getNickname();
+applySettings();updateBuildingInfo('city');showScreen('menu');getNickname();
