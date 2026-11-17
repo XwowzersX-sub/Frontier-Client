@@ -11,7 +11,7 @@ const serverUrl = (env.VITE_SERVER_URL || 'https://YOUR-RENDER-SERVICE.onrender.
 type BuildingType = 'city'|'factory'|'port'|'defense_post'|'market'|'farm';
 type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
-type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number; territory?:number; troopsTotal?:number; troopMax?:number };
+type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number; territory?:number; troopsTotal?:number; troopMax?:number; troopRate?:number; goldRate?:number };
 type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:number[];step?:number;from?:number;to?:number;destinationOwner?:string};
 type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; updates?:Array<[number,Tile]> };
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -61,15 +61,15 @@ app.innerHTML = `
   <div class="world-actions"><div id="solo-toolbar" class="solo-toolbar"><button id="pause-solo" class="world-icon">Ⅱ PAUSE</button><button id="speed-solo" class="world-icon">1× SPEED</button></div><button id="game-settings" class="world-icon">⚙ SETTINGS</button><button id="main-menu" class="world-icon">⌂ MENU</button></div>
  </div>
  <div id="match-banner" class="match-banner hidden"><b id="match-result">VICTORY</b><span id="match-result-detail">Campaign complete</span><button id="new-solo" class="world-icon">NEW CAMPAIGN</button></div>
- <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">🧭 SELECT A SOURCE · CLICK A DESTINATION TO MARCH TROOPS</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
+ <div class="map-inspector"><b id="tile-title">FRONTIER MAP</b><span id="tile-info">🧭 CLICK ANY LAND DIRECTION TO EXPAND · SEND 25% OF YOUR TOTAL TROOPS</span><span class="camera-help">WASD PAN · Q/E ZOOM · C CENTER · M GRID · SPACE PAUSE</span><span id="score">SCORE 0</span></div>
  <div class="minimap-panel"><div>🧭 WORLD RADAR <span>CLICK TO JUMP</span></div><canvas id="mini-map" width="180" height="180"></canvas></div>
  <div class="floating-dock">
   <div class="dock-profile"><i id="player-swatch"></i><div><small>👑 COMMANDER</small><b id="hud-name">GUEST</b></div><div class="dock-gold"><small>⚔ SELECTED TILE</small><b id="available-troops">0</b></div><div class="troop-stock"><div class="troop-stock-label"><small>⚔ TOTAL ARMY</small><b id="troop-cap-label">0 / 0</b></div><div class="troop-stock-track"><i id="troop-cap-fill"></i></div></div></div>
   <div class="dock-main">
    <div class="dock-tabs"><button class="dock-tab active" data-tab="command">⚔ COMMAND</button><button class="dock-tab" data-tab="build">🏗 BUILD</button><button class="dock-tab" data-tab="units">🎒 UNITS</button></div>
    <div id="command-panel" class="dock-panel">
-    <div class="ratio-control"><small>⚔ TROOPS TO SEND</small><div class="troop-choices"><button data-force="25">25%</button><button data-force="50" class="chosen">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
-    <div class="workforce-control"><label for="worker-ratio">👷 WORKFORCE / INCOME <b id="worker-ratio-label">30%</b></label><input id="worker-ratio" type="range" min="0" max="100" value="30"></div>
+    <div class="ratio-control"><small>⚔ NATION-WIDE EXPANSION</small><div class="troop-choices"><button data-force="25" class="chosen">25%</button><button data-force="50">50%</button><button data-force="75">75%</button><button data-force="100">100%</button></div></div>
+    <div class="economy-rates"><div><small>⚔ TROOP GROWTH</small><b id="troop-rate-label">+0.0/s</b></div><div><small>🪙 GOLD INCOME</small><b id="gold-rate-label">+1.0/s</b></div></div>
     <div class="dock-actions"><button id="recruit" class="dock-action">＋ RECRUIT <small>25 GOLD</small></button><button id="boat-mode" class="dock-action">🚢 SETTLE ISLAND <small>60 GOLD · PORT</small></button><button id="center-map" class="dock-action">◎ CENTER MAP</button></div>
    </div>
    <div id="build-panel" class="dock-panel hidden">
@@ -90,7 +90,7 @@ app.innerHTML = `
      <div class="chat-entry"><input id="chat-input" maxlength="80" placeholder="Send a quick message…"><button id="send-chat" class="dock-action">SEND</button></div>
     </div>
     <div id="solo-save-actions" class="save-actions"><button id="save-solo" class="dock-action">SAVE</button><button id="load-solo" class="dock-action">LOAD</button><button id="export-solo" class="dock-action">EXPORT</button><button id="import-solo" class="dock-action">IMPORT</button><input id="solo-file" class="hidden" type="file" accept=".json,application/json"></div>
-    <div class="dock-hint">🧭 Select one of your territories, set a troop percentage, then click a destination up to 15 tiles away. Your army marches that direction and captures reachable land. WASD pans · Q/E zoom · C centers · M grid · Space pause.</div>
+    <div class="dock-hint">🧭 Click any neutral or rival land in the direction you want to expand. No source selection needed: your nation automatically sends the selected share of its total troops. WASD pans · Q/E zoom · C centers · M grid · Space pause.</div>
    </div>
 
   </div>
@@ -106,7 +106,7 @@ type Settings={pixelScale:number;grid:boolean;sound:boolean;counts:boolean};
 let settings:Settings={pixelScale:0.75,grid:false,sound:false,counts:true};
 let previousScreen:'menu'|'game'='menu';
 try{settings={...settings,...JSON.parse(localStorage.getItem('frontier-settings')||'{}')};}catch{}if(![0.5,0.75,1].includes(settings.pixelScale))settings.pixelScale=0.75;
-let forcePercent=50,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
+let forcePercent=25,selectedSource=-1,activeBuilding:BuildingType|null=null,mode:'single'|'multi'='single',nickname=localStorage.getItem('frontier-nickname')||'';
 let soloMode:'ffa'|'duos'|'trios'|'squads'='ffa',soloMap='random',soloBotCount=24,soloDifficulty:'relaxed'|'balanced'|'intense'|'impossible'='balanced',soloWinPercent=80,soloLengthMinutes=0,soloSpeed=1,soloPaused=false,matchWinner:string|null=null,soloRandomSpawn=false,soloInfiniteGold=false,soloInfiniteTroops=false,soloAnonymous=false,soloSpawnPreference='center',soloWorkerRatio=30,boatMode=false;
 let socket:WebSocket|null=null,game:GameState|null=null,myId='',reconnecting=false,localTimer:ReturnType<typeof setInterval>|null=null;
 let cameraZoom=8,cameraX=500,cameraY=500,cameraDragging=false,cameraPointer=0,cameraStart:{x:number;y:number;cx:number;cy:number}|null=null,hoverTile=-1;
@@ -411,7 +411,7 @@ function restoreSoloSave(value:unknown):boolean{
  (el('solo-mode') as HTMLSelectElement).value=soloMode;(el('solo-map') as HTMLSelectElement).value=soloMap;(el('solo-bots') as HTMLSelectElement).value=String(soloBotCount);
  (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value='80';
  (el('sandbox-random') as HTMLInputElement).checked=soloRandomSpawn;(el('sandbox-gold') as HTMLInputElement).checked=soloInfiniteGold;(el('sandbox-troops') as HTMLInputElement).checked=soloInfiniteTroops;(el('sandbox-anonymous') as HTMLInputElement).checked=soloAnonymous;(el('start-region') as HTMLSelectElement).value=soloSpawnPreference;(el('solo-length') as HTMLSelectElement).value='0';
- (el('worker-ratio') as HTMLInputElement).value=String(soloWorkerRatio);el('worker-ratio-label').textContent=soloWorkerRatio+'%';
+ // Worker allocation was replaced by live OpenFront-style income-rate displays.
  (el('speed-solo') as HTMLButtonElement).textContent=soloSpeed+'× SPEED';(el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
  el('match-banner').classList.add('hidden');el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
  cameraZoom=8;const me=game.players.find(p=>p.id==='human');cameraX=me?me.home%WORLD_WIDTH:WORLD_WIDTH/2;cameraY=me?Math.floor(me.home/WORLD_WIDTH):WORLD_HEIGHT/2;
@@ -541,7 +541,7 @@ function botTurn(bot:Player,ownedInput?:number[]){
  candidates.sort((a,b)=>b.score-a.score);if(!candidates.length)return false;
  const pick=candidates[Math.floor(Math.random()*Math.min(3,candidates.length))]!;
  const sendPercent:Record<typeof soloDifficulty,number>={relaxed:48,balanced:66,intense:82,impossible:94};
- const captured=localMarch(bot.id,pick.source,pick.target,sendPercent[soloDifficulty]);
+ const captured=localMarch(bot.id,pick.target,sendPercent[soloDifficulty]);
  if(captured&&bot.gold>=25&&game.tick%2===0)localRecruit(bot);
  return captured>0;
 }
@@ -792,8 +792,8 @@ canvas.addEventListener('click',event=>{
  }
  const distance=Math.hypot(sourceIndex%game.width-index%game.width,Math.floor(sourceIndex/game.width)-Math.floor(index/game.width));
  if(distance>MAX_MARCH_DISTANCE){report('Destination is too far. Choose a point within '+MAX_MARCH_DISTANCE+' tiles.');return;}
- if(mode==='single'){localClaim(sourceIndex,index,forcePercent);render();checkSoloWinner();}
- else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',source:sourceIndex,tile:index,percent:forcePercent}));
+ if(mode==='single'){localClaim(index,forcePercent);render();checkSoloWinner();}
+ else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',tile:index,percent:forcePercent}));
 });
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
