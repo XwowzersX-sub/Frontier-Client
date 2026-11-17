@@ -649,7 +649,7 @@ function buildLocalExpansionFront(ownerId:string,targetOwner:string|null,owned:{
  // already held or captured before it, preventing disconnected "teleport" claims.
  return candidates;
 }
-function localMarch(attackerId:string,targetIndex:number,percent:number){
+function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInput?:number[]){
  if(!game||targetIndex<0||targetIndex>=game.width*game.height)return 0;
  const current=game,target=current.tiles[targetIndex]||getGameTile(targetIndex);
  const attacker=current.players.find(p=>p.id===attackerId),targetOwner=target?.owner??null;
@@ -661,13 +661,23 @@ function localMarch(attackerId:string,targetIndex:number,percent:number){
  }
  const owned:{index:number;x:number;y:number;tile:Tile}[]=[];
  let totalTroops=0,centerX=0,centerY=0,targetTroops=0,targetLand=0;
- current.tiles.forEach((tile,index)=>{
-  if(!tile)return;
-  if(tile.owner===attackerId){
+ if(ownedInput){
+  for(const index of ownedInput){
+   const tile=current.tiles[index];if(!tile||tile.owner!==attackerId)continue;
    const x=index%current.width,y=Math.floor(index/current.width);
    owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
-  }else if(targetOwner&&tile.owner===targetOwner){targetTroops+=tile.troops;targetLand++;}
- });
+  }
+ }else{
+  current.tiles.forEach((tile,index)=>{
+   if(!tile)return;
+   if(tile.owner===attackerId){
+    const x=index%current.width,y=Math.floor(index/current.width);
+    owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
+   }
+  });
+ }
+ const targetPlayer=targetOwner?current.players.find(p=>p.id===targetOwner):undefined;
+ targetTroops=targetPlayer?.troopsTotal??0;targetLand=targetPlayer?.territory??0;
  if(!owned.length||totalTroops<1){if(attackerId==='human')report('⚔ Your nation has no available troops.');return 0;}
  centerX/=owned.length;centerY/=owned.length;
  const tx=targetIndex%current.width,ty=Math.floor(targetIndex/current.width);
@@ -750,58 +760,120 @@ function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild
 function localRecruit(player:Player){if(!game||(!soloInfiniteGold&&player.gold<25))return;const home=game.tiles[player.home]||getGameTile(player.home);game.tiles[player.home]=home;if(home?.owner===player.id){if(!soloInfiniteGold)player.gold-=25;home.troops+=15;}}
 function botTurn(bot:Player,ownedInput?:number[]){
  if(!game)return false;
- const owned=ownedInput||[];
- if(!ownedInput)game.tiles.forEach((tile,i)=>{if(tile&&tile.owner===bot.id&&tile.troops>=8)owned.push(i);});
+ const owned=(ownedInput||[]).filter(index=>game!.tiles[index]?.owner===bot.id);
+ if(!owned.length||localExpansions.filter(exp=>exp.owner===bot.id).length>=2)return false;
+ const difficulty=soloDifficulty;
+ const maxTroops=bot.troopMax||Math.floor(2*(Math.pow(Math.max(1,bot.territory||owned.length),.6)+50));
+ const army=owned.reduce((sum,index)=>sum+(game!.tiles[index]?.troops||0),0);
+ const trigger:Record<typeof soloDifficulty,number>={relaxed:.46,balanced:.39,intense:.32,impossible:.27};
+ if(army<maxTroops*trigger[difficulty])return false;
 
- if(!owned.length)return false;
- const directions:[number,number][]=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
- const stride=Math.max(1,Math.floor(owned.length/90)),candidates:{source:number;target:number;score:number}[]=[];
- for(let oi=0;oi<owned.length;oi+=stride){
-  const source=owned[oi]!,sx=source%game.width,sy=Math.floor(source/game.width),army=game.tiles[source]!.troops;
-  for(const [dx,dy] of directions){
-   for(const distance of [5,9,13,MAX_MARCH_DISTANCE]){
-    const x=sx+dx*distance,y=sy+dy*distance;if(x<0||y<0||x>=game.width||y>=game.height)continue;
-    const target=y*game.width+x,targetTile=getGameTile(target);if(targetTile.owner===bot.id)continue;
-    const route=marchPath(source,target);let reachable=0,score=0;
-    for(const step of route){
-     const tile=getGameTile(step);game.tiles[step]=tile;
-     if(tile.terrain==='water'||tile.terrain==='mountain'||areAllies(bot.id,tile.owner))break;
-     if(tile.owner===bot.id)continue;
-     reachable++;
-     if(tile.owner){score+=7-Math.min(6,tile.troops*.28);const defender=game.players.find(p=>p.id===tile.owner);if(defender&&defender.home===step)score+=5;}
-     else score+=3.7;
-     if(reachable>=12)break;
-    }
-    if(!reachable)continue;
-    score+=reachable*1.5+Math.random()*1.8-distance*.035-Math.max(0,18-army)*.28;
-    candidates.push({source,target,score});
+ // Like OpenFront, decide from the actual border: neutral land first,
+ // then weak rivals, while responding to an attack against this nation.
+ const underAttack=localExpansions.filter(exp=>exp.targetOwner===bot.id).sort((a,b)=>b.remaining-a.remaining)[0];
+ const retaliateOwner=underAttack?.owner;
+ const frontier=new Map<string,{target:number;owner:string|null;score:number;tileTroops:number}>();
+ const stride=Math.max(1,Math.floor(owned.length/180));
+ for(let n=0;n<owned.length;n+=stride){
+  const source=owned[n]!,sourceTile=game.tiles[source]!;
+  if(sourceTile.troops<1)continue;
+  for(const target of neighborsLocal(source)){
+   const tile=getGameTile(target);
+   if(tile.terrain==='water'||tile.owner===bot.id||areAllies(bot.id,tile.owner))continue;
+   const key=tile.owner||'neutral';
+   const rival=tile.owner?game.players.find(player=>player.id===tile.owner):undefined;
+   const borderKey=key;
+   let score=0;
+   if(!tile.owner){
+    score=58;
+    if(tile.terrain==='forest')score-=3;
+    if(tile.terrain==='mountain')score-=12;
+   }else{
+    const rivalArmy=rival?.troopsTotal??tile.troops;
+    const rivalLand=Math.max(1,rival?.territory??1);
+    const density=rivalArmy/rivalLand;
+    score=42-Math.min(24,density*.14)-Math.min(18,tile.troops*.22);
+    if(rival&&rival.home===target)score+=10;
+    if((tile.buildings||[]).length)score+=4;
+    if(rivalArmy>army*1.3)score-=14;
+    if(retaliateOwner===tile.owner)score+=100;
+    if(difficulty==='relaxed')score-=5;
+    if(difficulty==='intense')score+=6;
+    if(difficulty==='impossible')score+=12;
    }
+   score+=Math.random()*3;
+   const existing=frontier.get(borderKey);
+   if(!existing||score>existing.score)frontier.set(borderKey,{target,owner:tile.owner,score,tileTroops:tile.troops});
   }
  }
- candidates.sort((a,b)=>b.score-a.score);if(!candidates.length)return false;
- const pick=candidates[Math.floor(Math.random()*Math.min(3,candidates.length))]!;
- const sendPercent:Record<typeof soloDifficulty,number>={relaxed:48,balanced:66,intense:82,impossible:94};
- const captured=localMarch(bot.id,pick.target,sendPercent[soloDifficulty]);
- if(captured&&bot.gold>=25&&game.tick%2===0)localRecruit(bot);
+ const choices=[...frontier.values()].sort((a,b)=>b.score-a.score);
+ if(!choices.length)return false;
+ // Neutral expansion keeps a reserve; attacks retain a stronger defence,
+ // with the hardest bots weighing their strongest non-ally rival more heavily.
+ let chosen=choices.find(choice=>choice.owner===null)||choices[0]!;
+ if(retaliateOwner){
+  const counter=choices.find(choice=>choice.owner===retaliateOwner);
+  if(counter)chosen=counter;
+ }
+ const rival=chosen.owner?game.players.find(player=>player.id===chosen.owner):undefined;
+ const reserveBase=maxTroops*(chosen.owner?({relaxed:.48,balanced:.42,intense:.38,impossible:.34}[difficulty]):({relaxed:.25,balanced:.22,intense:.2,impossible:.18}[difficulty]));
+ let reserve=reserveBase;
+ if(rival&&chosen.owner){
+  const retain:Record<typeof soloDifficulty,number>={relaxed:.2,balanced:.35,intense:.65,impossible:.82};
+  const enemyGuard=(rival.troopsTotal||chosen.tileTroops)*retain[difficulty];
+  reserve=Math.max(reserve,enemyGuard);
+ }
+ const budget=Math.max(0,army-reserve);
+ if(budget<Math.max(1,army*.12))return false;
+ if(rival&&difficulty!=='relaxed'&&difficulty!=='balanced'&&!retaliateOwner&&budget<Math.max(chosen.tileTroops,(rival.troopsTotal||0)*.2))return false;
+ const sendRatio=Math.min(.92,budget/Math.max(1,army));
+ const bias:Record<typeof soloDifficulty,number>={relaxed:.74,balanced:.83,intense:.92,impossible:.97};
+ const percent=Math.floor(100*Math.min(sendRatio,bias[difficulty]));
+ const captured=localMarch(bot.id,chosen.target,percent,owned);
+ if(captured>0&&bot.gold>=25&&game.tick%2===0)localRecruit(bot);
  return captured>0;
 }
 function botBuild(bot:Player,ownedInput?:number[]){
  if(!game)return;
- const personality=bot.id==='bot-1'?'builder':bot.id==='bot-2'?'raider':'warden';
- const choices:BuildingType[]=personality==='builder'?['factory','market','farm']:personality==='warden'?['defense_post','farm','market']:['farm','factory'];
  const land:{tile:Tile;index:number}[]=[];
- if(ownedInput){for(const index of ownedInput){const tile=getGameTile(index);if(tile.owner===bot.id)land.push({tile,index});}}
- else game.tiles.forEach((tile,index)=>{if(tile&&tile.owner===bot.id&&tile.terrain!=='mountain'&&tile.terrain!=='water')land.push({tile,index});});
+ for(const index of ownedInput||[]){
+  const tile=getGameTile(index);if(tile.owner===bot.id&&tile.terrain!=='water')land.push({tile,index});
+ }
+ if(!land.length)return;
+ const difficulty=soloDifficulty,personality=Number(bot.id.replace('bot-',''))%4;
+ const army=land.reduce((sum,item)=>sum+item.tile.troops,0),cap=bot.troopMax||150;
+ const cityCount=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='city').reduce((n,b)=>n+b.level,0),0);
+ const farms=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='farm').length,0);
+ const factories=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='factory').length,0);
+ const markets=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='market').length,0);
+ const defensePosts=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='defense_post').length,0);
+ const pressured=localExpansions.some(exp=>exp.targetOwner===bot.id);
+ const choices:BuildingType[]=[];
+ // City levels expand the army cap and should come before excessive income stacking.
+ if(cityCount<4&&(cityCount===0||army/cap>.48||personality===0))choices.push('city');
+ if(pressured||personality===2)if(defensePosts<Math.max(1,Math.floor(land.length/16)))choices.push('defense_post');
+ if(farms<Math.min(3,Math.ceil(land.length/35)))choices.push('farm');
+ if(factories<Math.min(3,Math.ceil(land.length/28)))choices.push('factory');
+ if(markets<Math.min(3,Math.ceil(land.length/35))&&personality!==1)choices.push('market');
+ // On easy settings keep development affordable; harder AIs invest more aggressively.
+ if(difficulty==='relaxed')choices.reverse();
  for(const type of choices){
   const cost=buildCosts[type];if(bot.gold<cost)continue;
   const eligible=land.find(({tile,index})=>{
-   const count=(tile.buildings||[]).filter(b=>b.type===type).length;
-   if(type==='port'&&!neighborsLocal(index).some(n=>getGameTile(n).terrain==='water'))return false;
+   const existing=tile.buildings||[];
+   if(type==='city')return (existing.find(b=>b.type==='city')?.level||0)<4;
+   const count=existing.filter(b=>b.type===type).length;
+   if(type==='defense_post')return count===0&&neighborsLocal(index).some(n=>getGameTile(n).owner!==bot.id&&getGameTile(n).terrain!=='water');
    return count<(type==='factory'||type==='market'||type==='farm'?3:1);
   });
   if(!eligible)continue;
-  eligible.tile.buildings=eligible.tile.buildings||[];eligible.tile.buildings.push({type,level:1});game.tiles[eligible.index]=eligible.tile;
-  if(!soloInfiniteGold)bot.gold-=cost;return;
+  eligible.tile.buildings=eligible.tile.buildings||[];
+  if(type==='city'){
+   const city=eligible.tile.buildings.find(b=>b.type==='city');
+   if(city)city.level++;else eligible.tile.buildings.push({type:'city',level:1});
+  }else eligible.tile.buildings.push({type,level:1});
+  game.tiles[eligible.index]=eligible.tile;
+  bot.gold-=cost;return;
  }
 }
 function localSeaRoute(from:number,to:number):number[]{
@@ -1086,7 +1158,7 @@ canvas.addEventListener('click',event=>{
   report(isPort?'⚓ Port selected for inspection. You can start expansion from anywhere on your border.':'📍 Territory selected for inspection. Click any neutral or rival land to expand from your whole nation.');
   updateStats();draw();return;
  }
- if(tile.terrain==='water'||tile.terrain==='mountain'){report('🧭 Aim at land to expand in that direction.');return;}
+ if(tile.terrain==='water'){report('🧭 Aim at land to expand in that direction.');return;}
  if(mode==='single'){localClaim(index,forcePercent);render();checkSoloWinner();}
  else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',tile:index,percent:forcePercent}));
 });
