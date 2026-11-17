@@ -596,7 +596,7 @@ function areAllies(attackerId:string,ownerId:string|null){
  return !!attacker&&!!defender&&attacker.team===defender.team;
 }
 type ExpansionCandidate={index:number;edge:number;pressure:number};
-type LocalExpansion={owner:string;targetOwner:string|null;sent:number;remaining:number;defenderTroops:number;launchIndex:number;candidates:ExpansionCandidate[];cursor:number;captured:number};
+type LocalExpansion={owner:string;targetOwner:string|null;sent:number;remaining:number;defenderTroops:number;frontWidth:number;launchIndex:number;candidates:ExpansionCandidate[];cursor:number;captured:number};
 const localExpansions:LocalExpansion[]=[];
 function buildLocalExpansionFront(ownerId:string,targetOwner:string|null,owned:{index:number;x:number;y:number;tile:Tile}[],dirX:number,dirY:number,targetIndex:number,sent:number):ExpansionCandidate[]{
  const current=game;if(!current)return[];
@@ -685,10 +685,11 @@ function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInp
  if(distance<.001){dirX=(attacker.home%current.width)-centerX;dirY=Math.floor(attacker.home/current.width)-centerY;distance=Math.hypot(dirX,dirY);}
  if(distance<.001){dirX=1;dirY=0;distance=1;}
  dirX/=distance;dirY/=distance;
- let launchIndex=-1,bestScore=-Infinity;
+ let launchIndex=-1,bestScore=-Infinity,frontWidth=0;
  for(const cell of owned){
   const border=neighborsLocal(cell.index).some(next=>{const t=getGameTile(next);return t.owner===targetOwner&&t.terrain!=='water';});
   if(!border)continue;
+  frontWidth++;
   const rx=cell.x-centerX,ry=cell.y-centerY,forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
   const targetDistance=Math.hypot(tx-cell.x,ty-cell.y);
   const score=forward-lateral*.32-targetDistance*.015;
@@ -701,7 +702,7 @@ function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInp
  if(!candidates.length){if(attackerId==='human')report('🛡 There is no connected land ahead of your border.');return 0;}
  const withdrawal=sent/totalTroops;
  for(const cell of owned)cell.tile.troops=Math.max(0,cell.tile.troops*(1-withdrawal));
- localExpansions.push({owner:attackerId,targetOwner,sent,remaining:sent,defenderTroops:targetTroops,launchIndex,candidates,cursor:0,captured:0});
+ localExpansions.push({owner:attackerId,targetOwner,sent,remaining:sent,defenderTroops:targetTroops,frontWidth,launchIndex,candidates,cursor:0,captured:0});
  if(attackerId==='human')report('🌐 Connected border front advancing through '+(targetOwner?'enemy':'unclaimed')+' territory. The front shows its remaining troops.');
  return candidates.length;
 }
@@ -713,7 +714,8 @@ function advanceLocalExpansions(){
  for(let e=localExpansions.length-1;e>=0;e--){
   const expansion=localExpansions[e]!,attacker=current.players.find(p=>p.id===expansion.owner);
   if(!attacker){localExpansions.splice(e,1);continue;}
-  const batch=Math.max(1,Math.ceil(expansion.candidates.length/42));
+  const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
+  const batch=Math.max(1,Math.min(96,Math.ceil(expansion.frontWidth/(1+strength))));
   const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
   while(expansion.cursor<end){
    const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
