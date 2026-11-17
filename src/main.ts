@@ -639,52 +639,45 @@ function areAllies(attackerId:string,ownerId:string|null){
  const attacker=game.players.find(p=>p.id===attackerId),defender=game.players.find(p=>p.id===ownerId);
  return !!attacker&&!!defender&&attacker.team===defender.team;
 }
-type ExpansionCandidate={index:number;edge:number;pressure:number;priority:number};
-type LocalExpansion={owner:string;targetOwner:string|null;sent:number;remaining:number;defenderTroops:number;frontWidth:number;launchIndex:number;candidates:ExpansionCandidate[];cursor:number;captured:number};
+type ExpansionCandidate={index:number;pressure:number;priority:number};
+type LocalExpansion={owner:string;targetOwner:string|null;sent:number;remaining:number;defenderTroops:number;launchIndex:number;frontier:ExpansionCandidate[];visited:Uint8Array;dirX:number;dirY:number;centerX:number;centerY:number;targetX:number;targetY:number;captured:number};
 const localExpansions:LocalExpansion[]=[];
-function buildLocalExpansionFront(ownerId:string,targetOwner:string|null,owned:{index:number;x:number;y:number;tile:Tile}[],dirX:number,dirY:number,targetIndex:number,sent:number):ExpansionCandidate[]{
- const current=game;if(!current)return[];
- const size=current.width*current.height,visited=new Uint8Array(size),simulatedOwned=new Uint8Array(size);
- const heap:ExpansionCandidate[]=[],candidates:ExpansionCandidate[]=[];
+function pushExpansionFrontier(heap:ExpansionCandidate[],candidate:ExpansionCandidate){
+ let i=heap.length;heap.push(candidate);
+ while(i>0){const parent=(i-1)>>1;if(heap[parent]!.priority<=candidate.priority)break;heap[i]=heap[parent]!;i=parent;}
+ heap[i]=candidate;
+}
+function popExpansionFrontier(heap:ExpansionCandidate[]):ExpansionCandidate|undefined{
+ if(!heap.length)return undefined;
+ const first=heap[0]!,last=heap.pop()!;
+ if(heap.length){let i=0;while(true){const left=i*2+1,right=left+1;if(left>=heap.length)break;const child=right<heap.length&&heap[right]!.priority<heap[left]!.priority?right:left;if(heap[child]!.priority>=last.priority)break;heap[i]=heap[child]!;i=child;}heap[i]=last;}
+ return first;
+}
+function makeExpansionCandidate(ownerId:string,targetOwner:string|null,index:number,visited:Uint8Array,dirX:number,dirY:number,cx:number,cy:number,tx:number,ty:number):ExpansionCandidate|null{
+ const current=game;if(!current||visited[index])return null;
+ const tile=getGameTile(index);
+ if(tile.terrain==='water'||tile.owner!==targetOwner)return null;
+ visited[index]=1;
+ const x=index%current.width,y=Math.floor(index/current.width),rx=x-cx,ry=y-cy;
+ const forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
+ let adjacentOwned=0;
+ for(const next of neighborsLocal(index))if(getGameTile(next).owner===ownerId)adjacentOwned++;
+ const terrainBias=tile.terrain==='mountain'?2:tile.terrain==='forest'?1.5:1;
+ const jitter=valueNoise(x*.17,y*.17,(current.mapSeed||1)+index)*2.2;
+ const priority=jitter+(1-adjacentOwned*.55+terrainBias*.5)*2.4+Math.max(0,lateral-Math.max(0,forward)*.25)*.006-Math.max(0,forward)*.001;
+ const pressure=tile.terrain==='mountain'?.34:tile.terrain==='forest'?.19:.16;
+ return{index,pressure,priority};
+}
+function buildLocalExpansionFront(ownerId:string,targetOwner:string|null,owned:{index:number;x:number;y:number;tile:Tile}[],dirX:number,dirY:number,targetIndex:number):{frontier:ExpansionCandidate[];visited:Uint8Array}{
+ const current=game;if(!current)return{frontier:[],visited:new Uint8Array(0)};
+ const visited=new Uint8Array(current.width*current.height),frontier:ExpansionCandidate[]=[];
  const cx=owned.reduce((sum,v)=>sum+v.x,0)/owned.length,cy=owned.reduce((sum,v)=>sum+v.y,0)/owned.length;
  const tx=targetIndex%current.width,ty=Math.floor(targetIndex/current.width);
- const limit=Math.min(16000,Math.max(160,Math.ceil(sent*90)));
- const canEnter=(i:number)=>{const tile=getGameTile(i);return tile.terrain!=='water'&&tile.owner===targetOwner;};
- const push=(candidate:ExpansionCandidate)=>{
-  let i=heap.length;heap.push(candidate);
-  while(i>0){const parent=(i-1)>>1;if(heap[parent]!.priority<=candidate.priority)break;heap[i]=heap[parent]!;i=parent;}
-  heap[i]=candidate;
- };
- const pop=():ExpansionCandidate|undefined=>{
-  if(!heap.length)return undefined;
-  const first=heap[0]!,last=heap.pop()!;
-  if(heap.length){let i=0;while(true){const left=i*2+1,right=left+1;if(left>=heap.length)break;const child=right<heap.length&&heap[right]!.priority<heap[left]!.priority?right:left;if(heap[child]!.priority>=last.priority)break;heap[i]=heap[child]!;i=child;}heap[i]=last;}
-  return first;
- };
- const addFrontierTile=(index:number)=>{
-  if(visited[index]||!canEnter(index))return;
-  visited[index]=1;
-  const tile=getGameTile(index),x=index%current.width,y=Math.floor(index/current.width),rx=x-cx,ry=y-cy;
-  const forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
-  const edge=.55+lateral*.018-forward*.035+Math.hypot(tx-x,ty-y)*.0007+(valueNoise(x*.08,y*.08,current.mapSeed||1)-.5)*.025;
-  let adjacentOwned=0;
-  for(const next of neighborsLocal(index))if(getGameTile(next).owner===ownerId||simulatedOwned[next])adjacentOwned++;
-  const terrainBias=tile.terrain==='mountain'?2:tile.terrain==='forest'?1.5:1;
-  // OpenFront-style priority frontier: newly exposed border tiles enter a heap.
-  // Nearby multi-edge pressure gets priority, with deterministic jitter so the edge flexes.
-  const priority=valueNoise(x*.17,y*.17,(current.mapSeed||1)+index)*7+(1-adjacentOwned*.5+terrainBias/2)*10+Math.max(0,lateral-Math.max(0,forward)*.25)*.012-Math.max(0,forward)*.002;
-  const pressure=tile.terrain==='mountain'?.34:tile.terrain==='forest'?.19:.16;
-  push({index,edge,pressure,priority});
- };
- for(const cell of owned)for(const next of neighborsLocal(cell.index))addFrontierTile(next);
- while(heap.length&&candidates.length<limit){
-  const candidate=pop();if(!candidate)break;
-  if(!canEnter(candidate.index))continue;
-  candidates.push(candidate);
-  simulatedOwned[candidate.index]=1;
-  for(const next of neighborsLocal(candidate.index))addFrontierTile(next);
+ for(const cell of owned)for(const next of neighborsLocal(cell.index)){
+  const candidate=makeExpansionCandidate(ownerId,targetOwner,next,visited,dirX,dirY,cx,cy,tx,ty);
+  if(candidate)pushExpansionFrontier(frontier,candidate);
  }
- return candidates;
+ return{frontier,visited};
 }
 function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInput?:number[]){
  if(!game||targetIndex<0||targetIndex>=game.width*game.height)return 0;
@@ -697,7 +690,7 @@ function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInp
   return 0;
  }
  const owned:{index:number;x:number;y:number;tile:Tile}[]=[];
- let totalTroops=0,centerX=0,centerY=0,targetTroops=0,targetLand=0;
+ let totalTroops=0,centerX=0,centerY=0,targetTroops=0;
  if(ownedInput){
   for(const index of ownedInput){
    const tile=current.tiles[index];if(!tile||tile.owner!==attackerId)continue;
@@ -706,15 +699,13 @@ function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInp
   }
  }else{
   current.tiles.forEach((tile,index)=>{
-   if(!tile)return;
-   if(tile.owner===attackerId){
-    const x=index%current.width,y=Math.floor(index/current.width);
-    owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
-   }
+   if(tile?.owner!==attackerId)return;
+   const x=index%current.width,y=Math.floor(index/current.width);
+   owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
   });
  }
  const targetPlayer=targetOwner?current.players.find(p=>p.id===targetOwner):undefined;
- targetTroops=targetPlayer?.troopsTotal??0;targetLand=targetPlayer?.territory??0;
+ targetTroops=targetPlayer?.troopsTotal??0;
  if(!owned.length||totalTroops<1){if(attackerId==='human')report('⚔ Your nation has no available troops.');return 0;}
  centerX/=owned.length;centerY/=owned.length;
  const tx=targetIndex%current.width,ty=Math.floor(targetIndex/current.width);
@@ -722,11 +713,10 @@ function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInp
  if(distance<.001){dirX=(attacker.home%current.width)-centerX;dirY=Math.floor(attacker.home/current.width)-centerY;distance=Math.hypot(dirX,dirY);}
  if(distance<.001){dirX=1;dirY=0;distance=1;}
  dirX/=distance;dirY/=distance;
- let launchIndex=-1,bestScore=-Infinity,frontWidth=0;
+ let launchIndex=-1,bestScore=-Infinity;
  for(const cell of owned){
   const border=neighborsLocal(cell.index).some(next=>{const t=getGameTile(next);return t.owner===targetOwner&&t.terrain!=='water';});
   if(!border)continue;
-  frontWidth++;
   const rx=cell.x-centerX,ry=cell.y-centerY,forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
   const targetDistance=Math.hypot(tx-cell.x,ty-cell.y);
   const score=forward-lateral*.32-targetDistance*.015;
@@ -735,14 +725,14 @@ function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInp
  if(launchIndex<0){if(attackerId==='human')report('🛡 Your nation has no connected border with that territory.');return 0;}
  const sent=Math.floor(totalTroops*Math.max(1,Math.min(100,percent))/100);
  if(sent<1){if(attackerId==='human')report('⚔ Not enough troops available.');return 0;}
- const candidates=buildLocalExpansionFront(attackerId,targetOwner,owned,dirX,dirY,targetIndex,sent);
- if(!candidates.length){if(attackerId==='human')report('🛡 There is no connected land ahead of your border.');return 0;}
+ const built=buildLocalExpansionFront(attackerId,targetOwner,owned,dirX,dirY,targetIndex);
+ if(!built.frontier.length){if(attackerId==='human')report('🛡 There is no connected land ahead of your border.');return 0;}
  const withdrawal=sent/totalTroops;
  for(const cell of owned)cell.tile.troops=Math.max(0,cell.tile.troops*(1-withdrawal));
  attacker.troopsTotal=Math.max(0,totalTroops-sent);
- localExpansions.push({owner:attackerId,targetOwner,sent,remaining:sent,defenderTroops:targetTroops,frontWidth,launchIndex,candidates,cursor:0,captured:0});
- if(attackerId==='human')report('🌐 Connected border front advancing through '+(targetOwner?'enemy':'unclaimed')+' territory. The front shows its remaining troops.');
- return candidates.length;
+ localExpansions.push({owner:attackerId,targetOwner,sent,remaining:sent,defenderTroops:targetTroops,launchIndex,frontier:built.frontier,visited:built.visited,dirX,dirY,centerX,centerY,targetX:tx,targetY:ty,captured:0});
+ if(attackerId==='human')report('🌐 Your border is advancing as a live, connected front. Its shape responds to each newly captured tile.');
+ return built.frontier.length;
 }
 function localClaim(targetIndex:number,percent:number){return localMarch('human',targetIndex,percent)>0;}
 function advanceLocalExpansions(){
@@ -752,32 +742,33 @@ function advanceLocalExpansions(){
  for(let e=localExpansions.length-1;e>=0;e--){
   const expansion=localExpansions[e]!,attacker=current.players.find(p=>p.id===expansion.owner);
   if(!attacker){localExpansions.splice(e,1);continue;}
-  const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
-  // Unclaimed settlement growth advances as a broad connected wave; contested land keeps its current progression.
-  const settlementSweep=expansion.targetOwner===null;
-  // Small, frequent steps make the frontier read as a continuous flow instead of a single large fill.
-  const batch=settlementSweep?Math.min(expansion.candidates.length-expansion.cursor,Math.max(4,Math.min(16,Math.ceil(expansion.frontWidth*.18)))):Math.max(3,Math.min(12,Math.ceil(expansion.frontWidth*.12)));
-  const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
-  while(expansion.cursor<end){
-   const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
-   current.tiles[index]=tile;
+  const defenderStrength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
+  let tickBudget=1,steps=0;
+  while(tickBudget>0&&expansion.frontier.length&&steps<24){
+   const candidate=popExpansionFrontier(expansion.frontier);if(!candidate)break;
+   const index=candidate.index,tile=current.tiles[index]||getGameTile(index);
    if(tile.terrain==='water'||tile.owner!==expansion.targetOwner)continue;
    const onBorder=neighborsLocal(index).some(next=>getGameTile(next).owner===expansion.owner);
    if(!onBorder)continue;
    const defensePost=(tile.buildings||[]).some(b=>b.type==='defense_post');
-   const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
-   const cost=candidate.pressure*(expansion.targetOwner?strength:1)+(expansion.targetOwner?tile.troops*.015:0)+(defensePost?.55:0);
+   const cost=candidate.pressure*defenderStrength+(expansion.targetOwner?tile.troops*.015:0)+(defensePost?.55:0);
    if(expansion.remaining<cost){
-    if(expansion.targetOwner&&tile.troops>0&&expansion.remaining>0){tile.troops=Math.max(0,tile.troops-Math.floor(expansion.remaining*2));changed=true;}
-    expansion.remaining=0;expansion.cursor=expansion.candidates.length;break;
+    if(expansion.targetOwner&&tile.troops>0&&expansion.remaining>0)tile.troops=Math.max(0,tile.troops-Math.floor(expansion.remaining*2));
+    expansion.remaining=0;expansion.frontier.length=0;break;
    }
    expansion.remaining-=cost;
    if(tile.owner){const previous=current.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
    tile.owner=expansion.owner;tile.troops=Math.max(0,Math.floor(Math.min(1,expansion.remaining*.025)));
    attacker.troopsTotal=Math.max(0,(attacker.troopsTotal||0)+tile.troops);
-   attacker.score++;expansion.captured++;changed=true;
+   attacker.score++;expansion.captured++;changed=true;steps++;
+   for(const next of neighborsLocal(index)){
+    const nextCandidate=makeExpansionCandidate(expansion.owner,expansion.targetOwner,next,expansion.visited,expansion.dirX,expansion.dirY,expansion.centerX,expansion.centerY,expansion.targetX,expansion.targetY);
+    if(nextCandidate)pushExpansionFrontier(expansion.frontier,nextCandidate);
+   }
+   const tilesPerTick=Math.max(4,Math.min(16,Math.ceil(Math.sqrt(Math.max(1,expansion.frontier.length))*1.5)));
+   tickBudget-=1/tilesPerTick;
   }
-  if(expansion.cursor>=expansion.candidates.length){
+  if(!expansion.frontier.length||expansion.remaining<=0){
    const home=current.tiles[attacker.home]?.owner===expansion.owner?attacker.home:expansion.launchIndex;
    const refund=expansion.captured?Math.floor(expansion.remaining*.8):Math.floor(expansion.sent*.7);
    if(refund>0&&home>=0){current.tiles[home]!.troops+=refund;attacker.troopsTotal=Math.max(0,(attacker.troopsTotal||0)+refund);changed=true;}
@@ -1162,7 +1153,7 @@ function draw(){
   ctx.beginPath();ctx.arc(x,y,Math.max(3,tilePx*.45),0,Math.PI*2);ctx.fillStyle=valid?'#a8ffdc':'#ff9a90';ctx.fill();ctx.restore();
  }
  const fronts:ExpansionFrontView[]=mode==='single'
-  ?localExpansions.map(exp=>({owner:exp.owner,tile:exp.candidates[Math.min(exp.cursor,Math.max(0,exp.candidates.length-1))]?.index??exp.launchIndex,troops:Math.ceil(exp.remaining)}))
+  ?localExpansions.map(exp=>({owner:exp.owner,tile:exp.frontier[0]?.index??exp.launchIndex,troops:Math.ceil(exp.remaining)}))
   :(current.expansions||[]);
  for(const front of fronts){
   const x=(front.tile%current.width-cameraX)*tilePx+cssW/2+tilePx/2;
