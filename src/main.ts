@@ -114,6 +114,46 @@ let requestedChunks=new Set<string>(),receivedChunks=new Set<string>();
 const canvas=el('map') as HTMLCanvasElement,overlayCanvas=el('map-overlay') as HTMLCanvasElement,ctx=overlayCanvas.getContext('2d')!;
 let worldRenderer:WorldRenderer|null=null;try{worldRenderer=new WorldRenderer(canvas);}catch(error){console.error('Could not initialize the GPU renderer:',error);report('WebGL2 is required for the map renderer.');}
 const miniMap=el('mini-map') as HTMLCanvasElement,miniCtx=miniMap.getContext('2d')!;
+let selectedLandmassCanvas:HTMLCanvasElement|null=null;
+let selectedLandmassMask:Uint8Array|null=null;
+let selectedLandmassSeed=-1,selectedLandmassName='',selectedLandmassSize=0;
+function clearLandmassSelection(){
+ selectedLandmassCanvas=null;selectedLandmassMask=null;selectedLandmassSeed=-1;selectedLandmassName='';selectedLandmassSize=0;
+}
+function selectLandmass(startIndex:number){
+ const current=game;if(!current)return;
+ const mapId=mapIdFromTitle(current.mapName||'continents'),seed=current.mapSeed||1;
+ if(selectedLandmassMask&&selectedLandmassSeed===seed&&selectedLandmassName===mapId&&selectedLandmassMask[startIndex])return;
+ const startX=startIndex%current.width,startY=Math.floor(startIndex/current.width);
+ const startTerrain=current.tiles[startIndex]?.terrain||terrainAt(startX,startY,mapId,seed);
+ if(startTerrain==='water'){clearLandmassSelection();return;}
+ const size=current.width*current.height,mask=new Uint8Array(size),queue=new Int32Array(size);
+ let head=0,tail=0;mask[startIndex]=1;queue[tail++]=startIndex;
+ const isLand=(index:number)=>{
+  const known=current.tiles[index];
+  if(known)return known.terrain!=='water';
+  return terrainAt(index%current.width,Math.floor(index/current.width),mapId,seed)!=='water';
+ };
+ while(head<tail){
+  const index=queue[head++]!,x=index%current.width,y=Math.floor(index/current.width);
+  const visit=(next:number)=>{if(next<0||next>=size||mask[next]||!isLand(next))return;mask[next]=1;queue[tail++]=next;};
+  if(x>0)visit(index-1);
+  if(x<current.width-1)visit(index+1);
+  if(y>0)visit(index-current.width);
+  if(y<current.height-1)visit(index+current.width);
+ }
+ const image=new ImageData(current.width,current.height),pixels=image.data;
+ for(let n=0;n<tail;n++){
+  const index=queue[n]!,x=index%current.width,y=Math.floor(index/current.width),p=index*4;
+  const edge=(x===0||!mask[index-1]||x===current.width-1||!mask[index+1]||
+    y===0||!mask[index-current.width]||y===current.height-1||!mask[index+current.width]);
+  pixels[p]=edge?115:72;pixels[p+1]=edge?237:190;pixels[p+2]=edge?255:239;pixels[p+3]=edge?190:34;
+ }
+ const overlay=document.createElement('canvas');overlay.width=current.width;overlay.height=current.height;
+ const overlayContext=overlay.getContext('2d');
+ if(overlayContext)overlayContext.putImageData(image,0,0);
+ selectedLandmassCanvas=overlay;selectedLandmassMask=mask;selectedLandmassSeed=seed;selectedLandmassName=mapId;selectedLandmassSize=tail;
+}
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
 function showScreen(name:'menu'|'game'|'settings'){menu.classList.toggle('hidden',name!=='menu');gameScreen.classList.toggle('hidden',name!=='game');el('settings-screen').classList.toggle('hidden',name!=='settings');}
@@ -164,7 +204,7 @@ function handleNetworkState(incoming:GameState){
  const newWorld=!game||game.width!==incoming.width||game.height!==incoming.height||game.mapSeed!==incoming.mapSeed;
  if(newWorld){
   game={...incoming,tiles:new Array<Tile>(incoming.width*incoming.height),ships:incoming.ships||[]};
-  requestedChunks.clear();receivedChunks.clear();selectedSource=-1;boatMode=false;
+  requestedChunks.clear();receivedChunks.clear();selectedSource=-1;boatMode=false;clearLandmassSelection();localExpansions.length=0;
   const me=incoming.players.find(p=>p.id===myId);
   cameraZoom=8;cameraX=me&&me.home>=0?me.home%incoming.width:incoming.width/2;
   cameraY=me&&me.home>=0?Math.floor(me.home/incoming.width):incoming.height/2;
@@ -301,7 +341,7 @@ function playerColor(slot:number){return 'hsl('+((slot*137.508+195)%360).toFixed
 const BOT_NAMES=['Astra','Vex','Orion','Nova','Mako','Sable','Atlas','Echo','Rune','Nyx','Sol','Kestrel','Mira','Drift','Onyx','Lumen','Rook','Cinder','Aero','Quill','Zephyr','Iris','Juno','Comet','Flint','Argo','Talon','Lyra','Kairo','Ember','Pixel','Nori','Cobalt','Warden','Basil','Riven','Mistral','Sora','Piper','Tundra','Vega','Fable','Koda','Boreal','Axiom','Indigo','Marble','Skye','Tessera'];
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);
- selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;resetCamera();myId='human';
+ localExpansions.length=0;clearLandmassSelection();selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;resetCamera();myId='human';
  soloMode=(el('solo-mode') as HTMLSelectElement).value as typeof soloMode;
  soloMap=(el('solo-map') as HTMLSelectElement).value;
  soloBotCount=Math.max(0,Math.min(49,Number((el('solo-bots') as HTMLSelectElement).value)||0));
@@ -407,7 +447,7 @@ function restoreSoloSave(value:unknown):boolean{
  soloWinPercent=80;soloLengthMinutes=0;soloSpeed=[1,2,4].includes(Number(save.soloSpeed))?Number(save.soloSpeed):1;
  soloRandomSpawn=Boolean(save.soloRandomSpawn);soloInfiniteGold=Boolean(save.soloInfiniteGold);soloInfiniteTroops=Boolean(save.soloInfiniteTroops);soloAnonymous=Boolean(save.soloAnonymous);
  soloSpawnPreference=save.soloSpawnPreference||'center';soloWorkerRatio=Math.max(0,Math.min(100,Number(save.soloWorkerRatio)||30));
- mode='single';myId='human';selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;boatMode=false;
+ mode='single';myId='human';localExpansions.length=0;clearLandmassSelection();selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;boatMode=false;
  (el('solo-mode') as HTMLSelectElement).value=soloMode;(el('solo-map') as HTMLSelectElement).value=soloMap;(el('solo-bots') as HTMLSelectElement).value=String(soloBotCount);
  (el('solo-difficulty') as HTMLSelectElement).value=soloDifficulty;(el('solo-win') as HTMLSelectElement).value='80';
  (el('sandbox-random') as HTMLInputElement).checked=soloRandomSpawn;(el('sandbox-gold') as HTMLInputElement).checked=soloInfiniteGold;(el('sandbox-troops') as HTMLInputElement).checked=soloInfiniteTroops;(el('sandbox-anonymous') as HTMLInputElement).checked=soloAnonymous;(el('start-region') as HTMLSelectElement).value=soloSpawnPreference;(el('solo-length') as HTMLSelectElement).value='0';
@@ -449,12 +489,19 @@ function areAllies(attackerId:string,ownerId:string|null){
  const attacker=game.players.find(p=>p.id===attackerId),defender=game.players.find(p=>p.id===ownerId);
  return !!attacker&&!!defender&&attacker.team===defender.team;
 }
+type ExpansionCandidate={index:number;edge:number;pressure:number};
+type LocalExpansion={owner:string;sent:number;launchIndex:number;candidates:ExpansionCandidate[];cursor:number;captured:number};
+const localExpansions:LocalExpansion[]=[];
 function localMarch(attackerId:string,targetIndex:number,percent:number){
  if(!game||targetIndex<0||targetIndex>=game.width*game.height)return 0;
  const current=game;
  const target=current.tiles[targetIndex]||getGameTile(targetIndex),attacker=current.players.find(p=>p.id===attackerId);
  if(!attacker||!target||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
  if(areAllies(attackerId,target.owner)){if(attackerId==='human')report('🤝 That territory belongs to an ally.');return 0;}
+ if(localExpansions.filter(exp=>exp.owner===attackerId).length>=2){
+  if(attackerId==='human')report('🌐 Your nation already has two expansion fronts moving. Let them advance first.');
+  return 0;
+ }
 
  const owned:{index:number;x:number;y:number;tile:Tile}[]=[];
  let totalTroops=0,centerX=0,centerY=0;
@@ -465,15 +512,14 @@ function localMarch(attackerId:string,targetIndex:number,percent:number){
  });
  if(!owned.length||totalTroops<1){if(attackerId==='human')report('⚔ Your nation has no available troops.');return 0;}
  centerX/=owned.length;centerY/=owned.length;
- const tx=targetIndex%game.width,ty=Math.floor(targetIndex/game.width);
+ const tx=targetIndex%current.width,ty=Math.floor(targetIndex/current.width);
  let dirX=tx-centerX,dirY=ty-centerY,distance=Math.hypot(dirX,dirY);
  if(distance<0.001&&attacker.home>=0){
-  dirX=(attacker.home%game.width)-centerX;dirY=Math.floor(attacker.home/game.width)-centerY;distance=Math.hypot(dirX,dirY);
+  dirX=(attacker.home%current.width)-centerX;dirY=Math.floor(attacker.home/current.width)-centerY;distance=Math.hypot(dirX,dirY);
  }
  if(distance<0.001){dirX=1;dirY=0;distance=1;}
  dirX/=distance;dirY/=distance;
 
- // Pick the outer edge facing the clicked direction; no source tile is selected.
  let launchIndex=-1,bestScore=-Infinity;
  for(const cell of owned){
   const border=neighborsLocal(cell.index).some(next=>{
@@ -491,19 +537,15 @@ function localMarch(attackerId:string,targetIndex:number,percent:number){
   let nearest=Infinity;
   for(const cell of owned){const d=Math.hypot(tx-cell.x,ty-cell.y);if(d<nearest){nearest=d;launchIndex=cell.index;}}
  }
- const sx=launchIndex%game.width,sy=Math.floor(launchIndex/game.width);
+ const sx=launchIndex%current.width,sy=Math.floor(launchIndex/current.width);
  const sent=Math.floor(totalTroops*Math.max(1,Math.min(100,percent))/100);
  if(sent<1){if(attackerId==='human')report('⚔ Not enough troops available.');return 0;}
 
- // The selected percentage is withdrawn proportionally from the whole nation.
- const withdrawal=sent/totalTroops;
- for(const cell of owned)cell.tile.troops=Math.max(0,cell.tile.troops*(1-withdrawal));
-
  const radius=Math.min(18,Math.max(2.5,1.7+Math.sqrt(sent)*.28));
- const extent=Math.ceil(radius*1.45),fieldSeed=(game.mapSeed||1)+launchIndex*17+targetIndex*31+sent*13;
- const minX=Math.max(0,sx-extent),maxX=Math.min(game.width-1,sx+extent);
- const minY=Math.max(0,sy-extent),maxY=Math.min(game.height-1,sy+extent);
- const candidates:{index:number;edge:number;pressure:number}[]=[];
+ const extent=Math.ceil(radius*1.45),fieldSeed=(current.mapSeed||1)+launchIndex*17+targetIndex*31+sent*13;
+ const minX=Math.max(0,sx-extent),maxX=Math.min(current.width-1,sx+extent);
+ const minY=Math.max(0,sy-extent),maxY=Math.min(current.height-1,sy+extent);
+ const candidates:ExpansionCandidate[]=[];
  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){
   const rx=x-sx,ry=y-sy,forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
   const normalized=Math.hypot(lateral/(radius*.86),(forward-radius*.13)/(radius*1.1));
@@ -511,32 +553,58 @@ function localMarch(attackerId:string,targetIndex:number,percent:number){
   if(warped>=1||forward< -radius*.55||(!rx&&!ry))continue;
   const falloff=Math.pow(Math.max(0,1-warped),.72);
   const pressure=sent/(radius*radius*.96)*falloff*(.86+.14*Math.max(0,forward/radius));
-  if(pressure>=1)candidates.push({index:y*game.width+x,edge:warped,pressure});
+  if(pressure>=1)candidates.push({index:y*current.width+x,edge:warped,pressure});
  }
  candidates.sort((a,b)=>a.edge-b.edge);
- let captured=0;
- for(const candidate of candidates){
-  const index=candidate.index,tile=game.tiles[index]||getGameTile(index);
-  if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner===attackerId||areAllies(attackerId,tile.owner))continue;
-  const defender=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
-  const required=defender+1;
-  if(candidate.pressure<required){
-   if(tile.owner&&defender>0){tile.troops=Math.max(0,defender-Math.floor(candidate.pressure));game.tiles[index]=tile;}
-   continue;
-  }
-  if(tile.owner){const previous=game.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
-  tile.owner=attackerId;tile.troops=Math.max(0,Math.floor(candidate.pressure-required));game.tiles[index]=tile;
-  attacker.score++;captured++;
- }
- if(!captured){
-  const refund=Math.floor(sent*.7),home=game.tiles[attacker.home]?.owner===attackerId?attacker.home:launchIndex;
-  if(home>=0)game.tiles[home]!.troops+=refund;
- }
- if(attackerId==='human')report(captured?'🌐 Expansion launched from your outer border. '+captured+' land tiles captured using '+percent+'% of national troops.':'🛡 The clicked direction had no reachable land; most of the committed force returned.');
- return captured;
+ if(!candidates.length){if(attackerId==='human')report('🛡 There is no reachable land in that direction.');return 0;}
+
+ // Reserve the troop percentage now; land ownership advances as the front moves.
+ const withdrawal=sent/totalTroops;
+ for(const cell of owned)cell.tile.troops=Math.max(0,cell.tile.troops*(1-withdrawal));
+ localExpansions.push({owner:attackerId,sent,launchIndex,candidates,cursor:0,captured:0});
+ if(attackerId==='human')report('🌐 Expansion front launched from your outer border. The highlighted continent is selected while the border advances.');
+ return candidates.length;
 }
 function localClaim(targetIndex:number,percent:number){return localMarch('human',targetIndex,percent)>0;}
-
+function advanceLocalExpansions(){
+ const current=game;
+ if(!current||mode!=='single'||soloPaused||matchWinner||!localExpansions.length)return;
+ let changed=false,finished=false;
+ for(let e=localExpansions.length-1;e>=0;e--){
+  const expansion=localExpansions[e]!;
+  const attacker=current.players.find(p=>p.id===expansion.owner);
+  if(!attacker){localExpansions.splice(e,1);continue;}
+  const batch=Math.max(1,Math.ceil(expansion.candidates.length/42));
+  const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
+  while(expansion.cursor<end){
+   const candidate=expansion.candidates[expansion.cursor++]!;
+   const index=candidate.index,tile=current.tiles[index]||getGameTile(index);
+   current.tiles[index]=tile;
+   if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner===expansion.owner||areAllies(expansion.owner,tile.owner))continue;
+   const defender=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
+   const required=defender+1;
+   if(candidate.pressure<required){
+    if(tile.owner&&defender>0){tile.troops=Math.max(0,defender-Math.floor(candidate.pressure));changed=true;}
+    continue;
+   }
+   if(tile.owner){const previous=current.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
+   tile.owner=expansion.owner;tile.troops=Math.max(0,Math.floor(candidate.pressure-required));
+   attacker.score++;expansion.captured++;changed=true;
+  }
+  if(expansion.cursor>=expansion.candidates.length){
+   if(!expansion.captured){
+    const refund=Math.floor(expansion.sent*.7),home=current.tiles[attacker.home]?.owner===expansion.owner?attacker.home:expansion.launchIndex;
+    if(home>=0){current.tiles[home]!.troops+=refund;changed=true;}
+    if(expansion.owner==='human')report('🛡 The advancing front ran out of strength; most troops returned.');
+   }else if(expansion.owner==='human'){
+    report('🌎 Border expansion complete. '+expansion.captured+' land tiles joined your continent.');
+   }
+   localExpansions.splice(e,1);finished=true;
+  }
+ }
+ if(changed||finished){render();checkSoloWinner();}
+}
+setInterval(advanceLocalExpansions,110);
 const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80};
 function localBuild(index:number,type:BuildingType){
  if(!game)return false;const tile=game.tiles[index]||getGameTile(index),me=game.players.find(p=>p.id===myId);game.tiles[index]=tile;if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
@@ -769,10 +837,11 @@ function draw(){
   if(x<-tilePx||y<-tilePx||x>cssW+tilePx||y>cssH+tilePx)continue;
   ctx.save();ctx.font='bold '+Math.max(9,tilePx*1.15)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='#79ecff';ctx.shadowBlur=9;ctx.fillStyle='#e7fdff';ctx.fillText(ship.kind==='trade'?'⛴':'🚢',x+tilePx/2,y+tilePx/2);ctx.restore();
  }
- if(selectedSource>=0&&selectedSource<current.tiles.length){
-  const sx=selectedSource%current.width,sy=Math.floor(selectedSource/current.width);
-  const x=(sx-cameraX)*tilePx+cssW/2,y=(sy-cameraY)*tilePx+cssH/2;
-  if(x>-tilePx&&y>-tilePx&&x<cssW&&y<cssH){ctx.save();ctx.strokeStyle='#93f6ff';ctx.lineWidth=Math.max(1.5,tilePx*.11);ctx.shadowColor='#52e5ff';ctx.shadowBlur=10;ctx.strokeRect(x+1,y+1,tilePx-2,tilePx-2);ctx.restore();}
+ if(selectedLandmassCanvas&&selectedLandmassSeed===(current.mapSeed||1)){
+  ctx.save();
+  ctx.setTransform(dpr*tilePx,0,0,dpr*tilePx,dpr*(cssW/2-cameraX*tilePx),dpr*(cssH/2-cameraY*tilePx));
+  ctx.globalCompositeOperation='screen';ctx.globalAlpha=.9;ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(selectedLandmassCanvas,0,0);ctx.restore();
  }
 
 }
@@ -811,8 +880,8 @@ function updateStats(){
  el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
  const selected=selectedSource>=0&&current?getGameTile(selectedSource):null;
  el('available-troops').textContent=selected&&selected.owner===myId?String(Math.floor(selected.troops)):'—';
- el('selected-info').textContent=selected&&selected.owner===myId?'TROOPS '+Math.floor(selected.troops)+' · '+selected.terrain.toUpperCase()+' · '+(selected.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
- el('tile-info').textContent=boatMode?'🚢 FERRY MODE · SELECT A COASTAL DESTINATION':activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ CLICK ANY LAND TARGET · SEND '+forcePercent+'% OF NATIONAL TROOPS · NO SOURCE REQUIRED';
+ el('selected-info').textContent=selectedLandmassSize?'CONTINENT HIGHLIGHTED · '+selectedLandmassSize.toLocaleString()+' LAND CELLS'+(selected&&selected.owner===myId?' · '+Math.floor(selected.troops)+' TROOPS AT CLICKED TILE':''):'No continent selected';
+ el('tile-info').textContent=boatMode?'🚢 FERRY MODE · SELECT A COASTAL DESTINATION':activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ CLICK A LAND DIRECTION · '+forcePercent+'% OF NATIONAL TROOPS · SLOW BORDER SPREAD';
  el('tile-title').textContent=boatMode?'🚢 SETTLEMENT FERRY':activeBuilding?'🏗 CONSTRUCTION MODE':'🌎 '+(current?.mapName||'WORLD MAP');
  el('turn').textContent=String(current?.tick||0);
  if(mode==='single'&&soloLengthMinutes>0&&current){const remaining=Math.max(0,soloLengthMinutes*15-current.tick)*4;el('time-left').textContent=Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');}else el('time-left').textContent='∞';
@@ -830,6 +899,7 @@ canvas.addEventListener('click',event=>{
  const index=tileAt(event);if(index<0)return;
  if(mode==='multi'&&!game.tiles[index]){requestChunkForTile(index);report('🗺 Loading this section of the map…');return;}
  const tile=mode==='single'?getGameTile(index):game.tiles[index]!;
+ if(tile.terrain==='water')clearLandmassSelection();else selectLandmass(index);
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
  if(boatMode){
   const source=selectedSource>=0?getGameTile(selectedSource):null;
