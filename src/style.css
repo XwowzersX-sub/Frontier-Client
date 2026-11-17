@@ -284,3 +284,25 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .spawn-roster-item small{color:#8fa99a;font:6px 'DM Mono'}
 .game-screen .minimap-panel{z-index:8}
 @media(max-width:760px){.lobby-layout{display:flex;flex-direction:column;padding:16px 0;gap:10px}.lobby-map-card{flex:0 0 auto}.lobby-side-card{flex:1}.lobby-player-list{max-height:190px}.lobby-countdown{margin:9px;padding:12px}.lobby-countdown b{font-size:40px}.lobby-tip{margin:8px 12px 12px}.spawn-placement-panel{top:70px;padding:10px 12px}.spawn-placement-panel>b{font-size:15px}.spawn-placement-panel>span{font-size:7px}}
+
+
+/* Building cards, hover descriptions, and larger OpenFront-inspired symbols */
+.build-grid{display:grid;grid-template-columns:repeat(7,minmax(76px,1fr));gap:7px;width:100%;align-items:stretch}
+.build-grid button{position:relative;min-width:0;min-height:94px;padding:9px 6px 7px;gap:4px;border-radius:12px;background:linear-gradient(155deg,#153c58,#0a2138);border:1px solid #4d91ad;box-shadow:inset 0 1px #ffffff18,0 4px 12px #0005}
+.build-grid button .building-icon{display:grid;place-items:center;width:42px;height:42px;margin:2px auto 1px;border-radius:11px;background:linear-gradient(145deg,#174b68,#0b263e);border:1px solid #5bb5d0;color:#dffaff;font:26px/1 system-ui,sans-serif;text-shadow:0 0 12px #65eaff88;box-shadow:0 0 16px #27caff20}
+.build-grid button b{font:800 9px 'DM Mono';letter-spacing:.35px}
+.build-grid button small{font:8px 'DM Mono';color:#8eeeff}
+.build-grid button kbd{top:4px;left:6px;font:7px 'DM Mono';opacity:.75}
+.build-grid button:hover,.build-grid button.build-selected{transform:translateY(-2px);background:linear-gradient(145deg,#1b607e,#12415d);border-color:#a5f4ff;box-shadow:0 0 20px #39dfff55,inset 0 1px #ffffff30}
+.build-grid button.build-selected .building-icon{background:linear-gradient(145deg,#4bd9ef,#b5fbff);border-color:#d0ffff;color:#082431;text-shadow:none;box-shadow:0 0 18px #5aeaff88}
+.build-grid button.build-selected small{color:#b7faff}
+.build-grid button.build-selected kbd{color:#c7faff}
+.building-info{display:flex;align-items:center;gap:12px;min-width:190px;flex:1;padding:8px 11px;background:#071c2de0;border:1px solid #4a8da9;border-radius:11px;box-shadow:inset 0 1px #ffffff12}
+.building-info-icon{display:grid;place-items:center;flex:0 0 48px;height:48px;border-radius:12px;background:linear-gradient(145deg,#1d5c78,#0d2a43);border:1px solid #66c7df;font:30px/1 system-ui,sans-serif;text-shadow:0 0 12px #5eeaff88}
+.building-info-copy{min-width:0}
+.building-info-copy b{display:block;color:#dffaff;font:800 11px 'DM Mono';letter-spacing:.8px}
+.building-info-copy p{margin:4px 0;color:#b8d6e3;font:8px/1.5 'DM Mono'}
+.building-info-copy small{color:#78eaff;font:7px/1.4 'DM Mono';letter-spacing:.3px}
+.boat-action{border-color:#64c9e2!important;color:#d8faff!important}
+@media(max-width:900px){.build-grid{grid-template-columns:repeat(4,minmax(72px,1fr))}.building-info{min-width:100%}}
+@media(max-width:600px){.build-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.build-grid button{min-height:76px;padding:6px 3px}.build-grid button .building-icon{width:34px;height:34px;font-size:22px}.build-grid button b{font-size:7px}.build-grid button small{font-size:6px}.building-info{gap:8px;padding:7px}.building-info-icon{flex-basis:40px;height:40px;font-size:25px}.building-info-copy p{font-size:7px}}
