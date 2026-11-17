@@ -577,3 +577,87 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
+
+
+/* Compact, rounded refinement — keep every existing information panel visible. */
+.featured-world-card,.commander-panel,.mode-panel,.account-panel,.settings-card,
+.lobby-map-card,.lobby-side-card,.floating-dock,.dock-profile,.dock-main,.dock-report,
+.map-inspector,.minimap-panel,.match-banner,.spawn-placement-panel{
+ border-radius:19px;
+}
+.home-layout{gap:17px;padding-top:clamp(20px,3vh,38px)}
+.home-intro h1{font-size:clamp(46px,5.7vw,74px)}
+.featured-card-body{min-height:225px;padding:22px 24px 18px}
+.featured-copy h2{font-size:clamp(30px,3.6vw,46px)}
+.featured-card-top{padding:10px 15px}
+.featured-card-bottom{padding:12px 15px}
+.commander-panel,.mode-panel{padding:14px}
+.panel-heading{margin-bottom:11px}
+.home-lower-strip{margin-top:9px}
+.home-primary-btn,.home-icon-btn,.world-icon,.dock-tab,.dock-action,
+.build-grid button,.mode-choice,.secondary{border-radius:12px!important}
+.home-primary-btn{padding:11px 15px}
+.world-topbar{min-height:48px;padding:6px 9px;gap:9px;border-radius:16px}
+.world-metrics{gap:5px}
+.world-metrics span{padding:5px 7px;border-radius:9px;font-size:6.5px}
+.world-metrics b{font-size:7.5px}
+.map-inspector{padding:9px 11px;border-radius:14px}
+.minimap-panel{width:168px;padding:7px;border-radius:15px}
+.floating-dock{
+ width:min(1380px,calc(100vw - 24px));gap:7px;padding:7px;border-radius:19px;
+ grid-template-columns:170px minmax(0,1fr) 190px;
+ box-shadow:0 17px 46px rgba(0,0,0,.36),inset 0 1px rgba(255,255,255,.05);
+}
+.dock-profile,.dock-main,.dock-report{border-radius:14px}
+.dock-profile,.dock-report{padding:9px}
+.dock-main{padding:8px 9px}
+.dock-tabs{padding-bottom:6px;margin-bottom:6px}
+.dock-tab{padding:7px 11px}
+.dock-panel{min-height:68px;gap:10px}
+.dock-action{padding:9px 10px}
+.build-grid{gap:6px}
+.build-grid button{min-height:88px;padding:7px 4px 6px}
+.build-grid button .building-icon{width:46px;height:46px;font-size:29px;border-radius:13px}
+.build-grid button b{font-size:7.5px}
+.build-grid button small{font-size:6.5px}
+.building-info{min-height:62px;padding:7px 9px;border-radius:13px}
+.building-info-icon{flex-basis:42px;height:42px;font-size:25px;border-radius:12px}
+.building-info-copy p{margin:3px 0;font-size:7.5px}
+.dock-report p{margin:5px 0;max-height:38px}
+.world-icon{padding:7px 10px}
+.settings-card{padding:20px}
+.lobby-map-card,.lobby-side-card{padding:14px}
+@media(max-width:1100px){
+ .floating-dock{grid-template-columns:145px minmax(0,1fr) 175px;width:calc(100vw - 18px)}
+ .dock-report{display:flex}
+ .build-grid{grid-template-columns:repeat(7,minmax(0,1fr))}
+}
+@media(max-width:760px){
+ .floating-dock{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  max-height:55dvh;overflow-y:auto;gap:5px;padding:6px;
+ }
+ .dock-profile{display:grid;grid-column:1;grid-row:1;min-height:68px;padding:7px}
+ .dock-report{display:flex;grid-column:2;grid-row:1;min-height:68px;padding:7px}
+ .dock-main{grid-column:1/-1;grid-row:2;padding:7px}
+ .dock-report p{max-height:30px;overflow:auto;font-size:7px}
+ .dock-report #selected-info{font-size:6px}
+ .build-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+ .build-grid button{min-height:76px;padding:5px 3px}
+ .build-grid button .building-icon{width:39px;height:39px;font-size:24px}
+ .world-metrics span:nth-child(n+7){display:inline-flex}
+}
+@media(max-width:430px){
+ .floating-dock{max-height:58dvh}
+ .dock-profile{grid-template-columns:8px minmax(0,1fr);gap:5px}
+ .dock-profile small,.dock-report>small{font-size:6px}
+ .dock-profile b{font-size:8px}
+ .dock-gold{gap:4px}
+ .dock-gold b{font-size:9px}
+ .troop-stock-label small{font-size:6px}
+ .troop-stock-label b{font-size:7px}
+ .dock-report p{font-size:6px;line-height:1.4}
+ .dock-tab{padding:7px 3px;font-size:6px}
+ .world-metrics{overflow-x:auto;scrollbar-width:none}
+ .world-metrics::-webkit-scrollbar{display:none}
+}
