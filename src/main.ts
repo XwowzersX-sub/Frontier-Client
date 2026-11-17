@@ -842,11 +842,11 @@ function botBuild(bot:Player,ownedInput?:number[]){
  if(!land.length)return;
  const difficulty=soloDifficulty,personality=Number(bot.id.replace('bot-',''))%4;
  const army=land.reduce((sum,item)=>sum+item.tile.troops,0),cap=bot.troopMax||150;
- const cityCount=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='city').reduce((n,b)=>n+b.level,0),0);
- const farms=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='farm').length,0);
- const factories=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='factory').length,0);
- const markets=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='market').length,0);
- const defensePosts=land.reduce((sum,item)=>sum+item.tile.buildings!.filter(b=>b.type==='defense_post').length,0);
+ const cityCount=land.reduce((sum,item)=>sum+(item.tile.buildings||[]).filter(b=>b.type==='city').reduce((n,b)=>n+b.level,0),0);
+ const farms=land.reduce((sum,item)=>sum+(item.tile.buildings||[]).filter(b=>b.type==='farm').length,0);
+ const factories=land.reduce((sum,item)=>sum+(item.tile.buildings||[]).filter(b=>b.type==='factory').length,0);
+ const markets=land.reduce((sum,item)=>sum+(item.tile.buildings||[]).filter(b=>b.type==='market').length,0);
+ const defensePosts=land.reduce((sum,item)=>sum+(item.tile.buildings||[]).filter(b=>b.type==='defense_post').length,0);
  const pressured=localExpansions.some(exp=>exp.targetOwner===bot.id);
  const choices:BuildingType[]=[];
  // City levels expand the army cap and should come before excessive income stacking.
