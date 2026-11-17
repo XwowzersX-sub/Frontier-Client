@@ -838,10 +838,14 @@ function draw(){
   ctx.save();ctx.font='bold '+Math.max(9,tilePx*1.15)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='#79ecff';ctx.shadowBlur=9;ctx.fillStyle='#e7fdff';ctx.fillText(ship.kind==='trade'?'⛴':'🚢',x+tilePx/2,y+tilePx/2);ctx.restore();
  }
  if(selectedLandmassCanvas&&selectedLandmassSeed===(current.mapSeed||1)){
-  ctx.save();
-  ctx.setTransform(dpr*tilePx,0,0,dpr*tilePx,dpr*(cssW/2-cameraX*tilePx),dpr*(cssH/2-cameraY*tilePx));
-  ctx.globalCompositeOperation='screen';ctx.globalAlpha=.9;ctx.imageSmoothingEnabled=true;
-  ctx.drawImage(selectedLandmassCanvas,0,0);ctx.restore();
+  const sx=Math.max(0,Math.floor(cameraX-cssW/(2*tilePx))-2),sy=Math.max(0,Math.floor(cameraY-cssH/(2*tilePx))-2);
+  const ex=Math.min(current.width,Math.ceil(cameraX+cssW/(2*tilePx))+2),ey=Math.min(current.height,Math.ceil(cameraY+cssH/(2*tilePx))+2);
+  const sw=Math.max(0,ex-sx),sh=Math.max(0,ey-sy);
+  if(sw&&sh){
+   ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.9;ctx.imageSmoothingEnabled=true;
+   ctx.drawImage(selectedLandmassCanvas,sx,sy,sw,sh,(sx-cameraX)*tilePx+cssW/2,(sy-cameraY)*tilePx+cssH/2,sw*tilePx,sh*tilePx);
+   ctx.restore();
+  }
  }
 
 }
@@ -900,6 +904,7 @@ canvas.addEventListener('click',event=>{
  if(mode==='multi'&&!game.tiles[index]){requestChunkForTile(index);report('🗺 Loading this section of the map…');return;}
  const tile=mode==='single'?getGameTile(index):game.tiles[index]!;
  if(tile.terrain==='water')clearLandmassSelection();else selectLandmass(index);
+ draw();updateStats();
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
  if(boatMode){
   const source=selectedSource>=0?getGameTile(selectedSource):null;
