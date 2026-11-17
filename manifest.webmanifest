@@ -1,0 +1,11 @@
+{
+  "name": "Pixel Frontier — Offline Strategy",
+  "short_name": "Pixel Frontier",
+  "description": "A self-contained pixel territory strategy game against computer nations.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07111d",
+  "theme_color": "#07111d",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

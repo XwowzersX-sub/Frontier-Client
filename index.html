@@ -1,2 +1,88 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#111827"/><title>Pixel Frontier</title></head><body><div id="app"></div><script type="module" src="/src/main.ts"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111d">
+  <meta name="description" content="A self-contained pixel territory strategy game. Play offline against computer nations.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <title>Pixel Frontier — Offline Strategy</title>
+</head>
+<body>
+  <main id="app">
+    <canvas id="world" aria-label="Pixel strategy world map"></canvas>
+    <section id="menuScreen" class="screen menu-screen">
+      <div class="menu-grid"></div><div class="menu-content">
+        <div class="brand-mark"><span class="mark-core"></span><span class="mark-orbit"></span></div>
+        <div class="eyebrow">OFFLINE TERRITORY STRATEGY</div><h1>PIXEL <span>FRONTIER</span></h1>
+        <p class="menu-subtitle">Build your nation. Push the border. Own the world.</p>
+        <div class="menu-actions">
+          <button id="playButton" class="primary-button"><span class="button-symbol">▶</span> PLAY SOLO</button>
+          <button id="continueButton" class="ghost-button" hidden>CONTINUE CAMPAIGN</button>
+          <button id="loadButton" class="ghost-button">LOAD LOCAL SAVE</button>
+        </div>
+        <div class="menu-footer"><span><i class="status-dot"></i> LOCAL SIMULATION</span><span>NO ACCOUNTS · NO SERVER · NO TRACKING</span></div>
+      </div><div class="menu-version">v0.1 · OFFLINE EDITION</div>
+    </section>
+    <section id="setupScreen" class="screen setup-screen" hidden>
+      <div class="setup-card">
+        <div class="panel-topline"><span>NEW CAMPAIGN</span><button class="icon-button" id="setupBack" aria-label="Back">✕</button></div>
+        <h2>Configure your world</h2><p class="panel-copy">A fresh map, computer nations, and a world that stays on this device.</p>
+        <div class="setup-grid">
+          <label class="field wide"><span>COMMANDER NAME</span><input id="commanderName" maxlength="18" value="Commander" autocomplete="off"></label>
+          <label class="field"><span>WORLD TYPE</span><select id="mapType"><option value="world">World · Balanced continents</option><option value="pangaea">Pangaea · One supercontinent</option><option value="islands">Island chain · Naval focus</option><option value="highlands">Highlands · Rugged terrain</option><option value="random">Chaos · Random landmasses</option></select></label>
+          <label class="field"><span>GAME MODE</span><select id="gameMode"><option value="ffa">Free for all</option><option value="duos">Duos · Teams of 2</option><option value="trios">Trios · Teams of 3</option><option value="squads">Squads · Teams of 4</option></select></label>
+          <label class="field"><span>COMPUTER NATIONS <b id="botCountValue">18</b></span><input id="botCount" type="range" min="0" max="49" value="18"><small>0–49 opponents · 50 total commanders maximum</small></label>
+          <label class="field"><span>AI DIFFICULTY</span><select id="difficulty"><option value="relaxed">Relaxed</option><option value="balanced" selected>Balanced</option><option value="intense">Intense</option><option value="impossible">Impossible</option></select></label>
+          <label class="field"><span>VICTORY TARGET</span><select id="winTarget"><option value="80">80% of all land</option><option value="70">70% of all land</option><option value="60">60% of all land</option></select></label>
+          <label class="field"><span>START POSITION</span><select id="spawnChoice"><option value="choose">Choose on the map</option><option value="random">Random safe location</option></select></label>
+        </div>
+        <div class="setup-note"><span class="note-icon">ⓘ</span><span>After the world is generated, click a green land area to choose your starting position. Computer nations will settle around the map.</span></div>
+        <button id="startButton" class="primary-button start-button">GENERATE WORLD <span>→</span></button>
+      </div>
+    </section>
+    <header id="hudTop" class="hud-top" hidden>
+      <div class="hud-brand"><span class="mini-mark"></span><span>PIXEL <b>FRONTIER</b></span></div>
+      <div class="resource-strip">
+        <div class="resource"><span class="resource-icon gold-icon">◈</span><div><small>GOLD</small><b id="goldValue">0</b></div></div>
+        <div class="resource"><span class="resource-icon troop-icon">✦</span><div><small>TROOPS</small><b id="troopValue">0 / 0</b></div></div>
+        <div class="resource land-resource"><span class="resource-icon land-icon">▦</span><div><small>LAND</small><b id="landValue">0.0%</b></div></div>
+      </div>
+      <div class="hud-actions"><button id="pauseButton" class="small-hud-button" title="Pause (Space)">Ⅱ</button><button id="speedButton" class="small-hud-button speed-button" title="Simulation speed">1×</button><button id="saveButton" class="small-hud-button" title="Save campaign">▣</button><button id="settingsButton" class="small-hud-button" title="Display settings">⚙</button><button id="menuButton" class="small-hud-button" title="Main menu">☰</button></div>
+    </header>
+    <aside id="leaderboard" class="leaderboard" hidden><div class="leaderboard-heading"><span>WORLD POWER</span><span id="aliveCount">0 NATIONS</span></div><div id="leaderboardRows" class="leaderboard-rows"></div></aside>
+    <div id="mapHint" class="map-hint" hidden><span class="hint-pulse"></span><span id="mapHintText">Choose your starting location</span></div>
+    <div id="selectionCard" class="selection-card" hidden>
+      <div class="selection-heading"><span id="selectionColor" class="selection-color"></span><div><b id="selectionName">Territory</b><small id="selectionMeta">Nation · 0 land tiles</small></div><button id="closeSelection" class="tiny-close">×</button></div>
+      <div class="selection-stats"><span>GOLD <b id="selectionGold">0</b></span><span>TROOPS <b id="selectionTroops">0</b></span></div><button id="attackSelection" class="selection-attack">ATTACK THIS NATION</button>
+    </div>
+    <div id="fieldReport" class="field-report" hidden></div>
+    <section id="bottomDock" class="bottom-dock" hidden>
+      <div class="dock-left"><div class="dock-section-label">COMMAND</div><div class="ratio-control" id="ratioControl" aria-label="Troop commitment"><button data-ratio="0.25">25%</button><button data-ratio="0.5" class="active">50%</button><button data-ratio="0.75">75%</button><button data-ratio="1">100%</button></div></div>
+      <div class="dock-divider"></div>
+      <div class="dock-builds"><div class="dock-section-label">CONSTRUCT · CLICK A TILE YOU OWN</div><div class="build-buttons">
+        <button class="build-button" data-build="city" title="City · Raises troop capacity and income"><span class="build-symbol city-symbol">⌂</span><span class="build-name">CITY</span><small>180 ◈</small></button>
+        <button class="build-button" data-build="factory" title="Factory · Strong gold income"><span class="build-symbol factory-symbol">⚙</span><span class="build-name">FACTORY</span><small>240 ◈</small></button>
+        <button class="build-button" data-build="port" title="Port · Enables distant sea landings"><span class="build-symbol port-symbol">⌁</span><span class="build-name">PORT</span><small>220 ◈</small></button>
+        <button class="build-button" data-build="defense" title="Fort · Makes nearby tiles harder to capture"><span class="build-symbol defense-symbol">⬟</span><span class="build-name">FORT</span><small>120 ◈</small></button>
+      </div></div>
+      <div class="dock-divider mobile-hide"></div><div class="dock-right"><button id="clearBuildButton" class="dock-utility" title="Cancel selected construction (Backspace)">ESC</button><button id="exportButton" class="dock-utility" title="Export campaign to a file">⇧ SAVE FILE</button></div>
+    </section>
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <section id="pauseOverlay" class="overlay-panel" hidden><div class="overlay-card"><div class="eyebrow">CAMPAIGN PAUSED</div><h2>Take a breath.</h2><p>The simulation is stopped. Your world is safe.</p><button id="resumeButton" class="primary-button">RESUME GAME</button><button id="pauseSaveButton" class="ghost-button">SAVE CAMPAIGN</button></div></section>
+    <section id="gameOverScreen" class="overlay-panel" hidden><div class="overlay-card"><div class="eyebrow" id="resultEyebrow">CAMPAIGN COMPLETE</div><h2 id="resultTitle">Victory</h2><p id="resultText">Your nation controls the world.</p><div class="result-stats"><span>LAND <b id="resultLand">0%</b></span><span>ELIMINATIONS <b id="resultElims">0</b></span><span>TIME <b id="resultTime">0:00</b></span></div><button id="newCampaignButton" class="primary-button">NEW CAMPAIGN</button><button id="resultMenuButton" class="ghost-button">MAIN MENU</button></div></section>
+    <section id="settingsOverlay" class="overlay-panel" hidden><div class="overlay-card settings-card"><div class="panel-topline"><span>GAME SETTINGS</span><button id="settingsClose" class="icon-button">✕</button></div><h2>Display & controls</h2>
+      <label class="toggle-row"><span><b>Territory grid</b><small>Show subtle tile divisions</small></span><input id="gridToggle" type="checkbox" checked></label>
+      <label class="toggle-row"><span><b>Country labels</b><small>Show names over larger territories</small></span><input id="labelsToggle" type="checkbox" checked></label>
+      <label class="toggle-row"><span><b>Building icons</b><small>Show structures on the map</small></span><input id="iconsToggle" type="checkbox" checked></label>
+      <label class="toggle-row"><span><b>Pixel sharpness</b><small>Keep the map crisp while zooming</small></span><input id="pixelToggle" type="checkbox" checked></label>
+      <div class="settings-help"><b>CONTROLS</b><p>Left click: select / expand / build<br>Drag: move map · Scroll: zoom<br>1–4: select a building · Backspace: cancel selection<br>Space: pause · Esc: close panel or deselect</p></div>
+    </div></section>
+    <input id="saveFileInput" type="file" accept="application/json,.json" hidden>
+  </main>
+  <script src="game.js" defer></script>
+  <script>if('serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));</script>
+</body>
+</html>

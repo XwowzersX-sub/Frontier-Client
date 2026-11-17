@@ -1,44 +1,62 @@
-# Frontier Client
+# Pixel Frontier — Offline Edition
 
-A pixel-art territory strategy game client built with Vite, TypeScript, Canvas 2D, and Supabase Auth. It connects to the authoritative WebSocket game server and wakes a sleeping Render service with an HTTP health request.
+A self-contained, browser-only pixel territory strategy game. The simulation runs locally: no accounts, backend, Supabase project, WebSocket, game server, analytics, or third-party runtime libraries.
 
-## Gameplay
-- Click a tile to inspect it.
-- Expand into neutral land next to your territory for 4 gold.
-- Capture enemy territory for 8 gold if your neighboring troop strength is greater than the defending garrison.
-- Recruit 5 troops for 25 gold.
-- Territories generate gold; troops slowly replenish.
-- The leaderboard shows connected and away commanders.
+## Play
 
-## Run locally
-```bash
-npm install
-npm run dev
-```
+1. Open the GitHub Pages site, or run `python3 -m http.server 8000` from this folder and visit `http://localhost:8000`.
+2. Choose Play Solo and configure the map, AI count, difficulty, team size, and victory target.
+3. Choose a starting location, then expand into neutral territory and challenge rival nations.
+4. Build cities, factories, ports, and forts. Capture the target share of land or outlast every opponent.
 
-Create a local `.env` file from `.env.example`. The publishable Supabase key is safe for the browser; never use a Supabase secret key here.
+The first load needs the static files from GitHub Pages. After the service worker has cached them, the game shell can load offline. Campaign saves live in this browser's local storage; Save File exports a portable JSON file.
 
-## Deploy to GitHub Pages
-1. Repository Settings → Pages → Build and deployment → Source: **GitHub Actions**.
-2. Settings → Secrets and variables → Actions → Variables. Add:
-   - `VITE_SUPABASE_URL` = `https://rkenxijtbmiqcgwhvtgr.supabase.co`
-   - `VITE_SUPABASE_ANON_KEY` = your Supabase publishable key
-   - `VITE_SERVER_URL` = your Render service URL, e.g. `https://frontier-server.onrender.com`
-3. Push to `main`; the workflow builds and deploys the site.
+## GitHub Pages deployment
 
-## Notes
-The world is shared by all clients on one server. The server saves snapshots to Supabase so the map and commander progress can survive a Render restart. The multiplayer prototype currently has one global map and no separate match rooms or multiplayer AI. Single-player supports configurable AI commanders, map presets, team formats, and win targets.
+The repository includes a static Pages workflow at .github/workflows/deploy.yml and requires no build step.
 
-## Fullscreen controls and construction
+1. Open Settings → Pages.
+2. Set Build and deployment → Source to GitHub Actions.
+3. Push to main (or run the workflow manually under Actions).
+4. Open the Pages URL shown in the workflow deployment summary.
 
-- The battlefield fills the screen. A floating dock at the bottom contains Command, Build, and Units panels.
-- Click one of your land tiles to select it. Click adjacent neutral or rival land to expand; there are no drawn routes. The Command panel sets the troop ratio to 25%, 50%, 75%, or 100%.
-- Build hotkeys 1–7 select City, Factory, Port, Defense Post, Market, Farm, and Highway. Hover over a building to read its description, cost, and placement rules. Select a structure, then click one of your own territories.
-- Ports must be placed on a coastline and enable settlement ferries and trade boats. Cities can be upgraded to level 4. Factories and Markets increase gold income; Farms improve troop recovery; Defense Posts make a tile harder to capture. Highways connect to cities, factories, markets, or other highway segments and add gold income.
-- Solo match setup includes FFA, Duos, Trios, and Squads; Continents, Island Chain, Pangaea, and Highlands maps; 0–7 AI opponents; four AI difficulty levels; and a configurable land-win target. Team modes automatically add enough AI commanders to form opposing teams.
-- Solo campaigns can be paused, resumed, or sped up to 2×/4×. WASD pans the camera, Q/E zooms, C centers, M toggles the grid, and Space pauses.
-- Solo campaigns can be saved locally, loaded, exported as portable JSON files, or imported from another save file.
-- The Units panel includes quick chat and emoji pings. Multiplayer messages are broadcast by the server; solo messages appear in the field report.
-- Solo sandbox modifiers include Random Spawn, Infinite Gold, Infinite Troops, and Anonymous Names. These settings are saved in exported campaign files. Middle-mouse drag pans too.
-- Settings include fine pixel scaling, grid visibility, and troop-count display. Sound preference is saved, but sound effects are not implemented yet.
-- Nicknames and display settings are saved in the browser.
+No Actions secrets or environment variables are needed. This is a static site; there is no server to wake up and no Supabase configuration.
+
+## Controls
+
+- Left click neutral land or a rival nation to send an expansion/attack front.
+- Left click your land to inspect it.
+- Select a building from the bottom dock, then click a tile you own to place it.
+- Choose 25%, 50%, 75%, or 100% troop commitment before an attack.
+- Drag the map to pan; scroll to zoom.
+- 1–4 select buildings; Backspace cancels selection; Space pauses; Esc closes a panel or deselects.
+- A port enables longer-distance coastal landings.
+
+## Included systems
+
+- Procedurally generated world, pangaea, island-chain, highlands, and random maps.
+- Free-for-all, Duos, Trios, and Squads.
+- Up to 49 AI nations (50 commanders total), with four difficulty profiles.
+- Tile ownership and a moving attack frontier with per-attack troop reserves.
+- Terrain-sensitive capture costs, defender troop depletion, and fortification resistance.
+- Gold income, troop regeneration/capacity, cities, factories, ports, and forts.
+- Local saves, JSON import/export, pause, and simulation speed controls.
+- 60%, 70%, or 80% land-control target and last-team-standing victory.
+
+## Research and independence
+
+Pixel Frontier is an independent implementation inspired by broad RTS concepts in OpenFront. It does not copy OpenFront source files, graphics, sounds, map data, logos, or fonts. Terrain, interface, names, and simulation code are original.
+
+Research references:
+- OpenFront architecture: https://github.com/openfrontio/OpenFrontIO/blob/main/docs/Architecture.md
+- Attack implementation: https://github.com/openfrontio/OpenFrontIO/blob/main/packages/engine/src/execution/AttackExecution.ts
+- Nation AI behavior: https://github.com/openfrontio/OpenFrontIO/blob/main/packages/engine/src/execution/nation/NationAttackBehavior.ts
+- Repository and licensing: https://github.com/openfrontio/OpenFrontIO
+
+OpenFront's source is AGPL-3.0; its asset notice distinguishes CC BY-SA resources from separately restricted proprietary assets. This project does not incorporate those files. Its original code is licensed under MIT; see LICENSE.
+
+See RESEARCH.md for source findings and how the design influenced this independent implementation.
+
+## Limitations
+
+This is an offline single-player game. Different visitors to the Pages site do not share a map or match. There is no online matchmaking, login, shared leaderboard, or cloud save. Saves stay in the local browser unless exported. The mechanics are inspired by OpenFront but are not a one-to-one port of its complete simulation or balance.
