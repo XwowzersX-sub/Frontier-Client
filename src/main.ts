@@ -372,80 +372,83 @@ function createWorldTiles(mapId:string,seed:number):{tiles:Tile[];playable:numbe
  for(let i=0;i<WORLD_WIDTH*WORLD_HEIGHT;i++){const terrain=terrainAt(i%WORLD_WIDTH,Math.floor(i/WORLD_WIDTH),mapId,seed);if(terrain!=='water'&&terrain!=='mountain')playable++;}
  return{tiles,playable};
 }
-function getSpawnSites(){
- const sites:number[]=[];
- for(let row=0;row<5;row++)for(let col=0;col<10;col++){
-  const x=Math.round(12+col*(WORLD_WIDTH-24)/9),y=Math.round(10+row*(WORLD_HEIGHT-20)/4);
-  sites.push(y*WORLD_WIDTH+x);
+function spawnBlobForMap(tiles:Tile[],center:number,mapId:string,seed:number):number[]|null{
+ if(!Number.isInteger(center)||center<0||center>=WORLD_WIDTH*WORLD_HEIGHT)return null;
+ const sx=center%WORLD_WIDTH,sy=Math.floor(center/WORLD_WIDTH),blob:number[]=[];
+ for(let y=Math.max(0,sy-4);y<=Math.min(WORLD_HEIGHT-1,sy+4);y++)for(let x=Math.max(0,sx-4);x<=Math.min(WORLD_WIDTH-1,sx+4);x++){
+  const dx=x-(sx-.5),dy=y-(sy-.5);if(dx*dx+dy*dy>16)continue;
+  const i=y*WORLD_WIDTH+x,tile=tiles[i]||baseTileAt(i,mapId,seed);
+  if(tile.owner||tile.terrain==='water'||tile.terrain==='mountain')return null;
+  blob.push(i);
  }
- return sites;
+ return blob.length>=35?blob:null;
 }
-function chooseSpawnSite(preference:string,used:number[],farthest=false){
- const available=getSpawnSites().filter(s=>!used.includes(s));
- if(!available.length)return getSpawnSites().find(s=>!used.includes(s))??Math.floor(WORLD_HEIGHT/2)*WORLD_WIDTH+Math.floor(WORLD_WIDTH/2);
+function chooseSpawnSite(preference:string,used:number[],farthest=false,mapId='continents',seed=1,tiles:Tile[]=[]){
  const point=SPAWN_POINTS[preference]||SPAWN_POINTS.center!;
- available.sort((a,b)=>{
-  const ax=(a%WORLD_WIDTH)/WORLD_WIDTH-point[0],ay=Math.floor(a/WORLD_WIDTH)/WORLD_HEIGHT-point[1];
-  const bx=(b%WORLD_WIDTH)/WORLD_WIDTH-point[0],by=Math.floor(b/WORLD_WIDTH)/WORLD_HEIGHT-point[1];
-  const da=ax*ax+ay*ay,db=bx*bx+by*by;
+ let best=-1,bestScore=-Infinity;
+ for(let attempt=0;attempt<1800;attempt++){
+  const x=8+Math.floor(Math.random()*(WORLD_WIDTH-16)),y=8+Math.floor(Math.random()*(WORLD_HEIGHT-16)),candidate=y*WORLD_WIDTH+x;
+  if(used.some(home=>Math.hypot(x-home%WORLD_WIDTH,y-Math.floor(home/WORLD_WIDTH))<25))continue;
+  if(!spawnBlobForMap(tiles,candidate,mapId,seed))continue;
+  const px=x/WORLD_WIDTH,py=y/WORLD_HEIGHT,prefDistance=Math.hypot(px-point[0],py-point[1]);
+  let score=-prefDistance;
   if(farthest&&used.length){
-   const minA=Math.min(...used.map(u=>Math.hypot(a%WORLD_WIDTH-u%WORLD_WIDTH,Math.floor(a/WORLD_WIDTH)-Math.floor(u/WORLD_WIDTH))));
-   const minB=Math.min(...used.map(u=>Math.hypot(b%WORLD_WIDTH-u%WORLD_WIDTH,Math.floor(b/WORLD_WIDTH)-Math.floor(u/WORLD_WIDTH))));
-   return minB-minA||da-db;
+   const minDistance=Math.min(...used.map(home=>Math.hypot(x-home%WORLD_WIDTH,y-Math.floor(home/WORLD_WIDTH))));
+   score=minDistance-prefDistance*8;
   }
-  return da-db;
- });
- return available[0]!;
+  if(score>bestScore){bestScore=score;best=candidate;}
+ }
+ return best;
 }
 function clearSpawnArea(tiles:Tile[],at:number,owner:string,playerColor:string,mapId:string,seed:number){
- const sx=at%WORLD_WIDTH,sy=Math.floor(at/WORLD_WIDTH);
- for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
-  const x=sx+dx,y=sy+dy;if(x<1||y<1||x>=WORLD_WIDTH-1||y>=WORLD_HEIGHT-1)continue;
-  const index=y*WORLD_WIDTH+x,existing=tiles[index],terrain=existing?.terrain||terrainAt(x,y,mapId,seed);
-  if(terrain==='water'||terrain==='mountain')tiles[index]={owner:null,terrain:'plain',troops:0,buildings:[]};
+ const blob=spawnBlobForMap(tiles,at,mapId,seed);if(!blob)return false;
+ for(const i of blob){
+  const base=tiles[i]||baseTileAt(i,mapId,seed);
+  tiles[i]={...base,owner,terrain:base.terrain,troops:i===at?36:0,buildings:[]};
  }
- tiles[at]={owner,terrain:'plain',troops:36,buildings:[]};
+ return true;
 }
 function playerColor(slot:number){return 'hsl('+((slot*137.508+195)%360).toFixed(1)+' 66% 58%)';}
 const BOT_NAMES=['Astra','Vex','Orion','Nova','Mako','Sable','Atlas','Echo','Rune','Nyx','Sol','Kestrel','Mira','Drift','Onyx','Lumen','Rook','Cinder','Aero','Quill','Zephyr','Iris','Juno','Comet','Flint','Argo','Talon','Lyra','Kairo','Ember','Pixel','Nori','Cobalt','Warden','Basil','Riven','Mistral','Sora','Piper','Tundra','Vega','Fable','Koda','Boreal','Axiom','Indigo','Marble','Skye','Tessera'];
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);
- localExpansions.length=0;clearLandmassSelection();selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=false;soloSpeed=1;resetCamera();myId='human';
+ localExpansions.length=0;clearLandmassSelection();selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=true;soloSpeed=1;spawnPlacementActive=true;resetCamera();myId='human';
  soloMode=(el('solo-mode') as HTMLSelectElement).value as typeof soloMode;
  soloMap=(el('solo-map') as HTMLSelectElement).value;
  soloBotCount=Math.max(0,Math.min(49,Number((el('solo-bots') as HTMLSelectElement).value)||0));
  const teamMinimum=soloMode==='duos'?3:soloMode==='trios'?5:soloMode==='squads'?7:0;
  if(soloBotCount<teamMinimum){soloBotCount=teamMinimum;(el('solo-bots') as HTMLSelectElement).value=String(teamMinimum);}
  soloDifficulty=(el('solo-difficulty') as HTMLSelectElement).value as typeof soloDifficulty;
- soloWinPercent=80;
- soloLengthMinutes=0;
+ soloWinPercent=80;soloLengthMinutes=0;
  soloSpawnPreference=(el('start-region') as HTMLSelectElement).value;
  soloRandomSpawn=(el('sandbox-random') as HTMLInputElement).checked;soloInfiniteGold=(el('sandbox-gold') as HTMLInputElement).checked;soloInfiniteTroops=(el('sandbox-troops') as HTMLInputElement).checked;soloAnonymous=(el('sandbox-anonymous') as HTMLInputElement).checked;
- const actualMap=soloMap==='random'?WORLD_MAPS[Math.floor(Math.random()*WORLD_MAPS.length)]!.id:soloMap;
- const mapName=mapTitle(actualMap);
- const mapSeed=Math.random()*1000,generated=createWorldTiles(actualMap,mapSeed),tiles=generated.tiles;
- const teamSize=soloMode==='duos'?2:soloMode==='trios'?3:soloMode==='squads'?4:1;
- const totalPlayers=soloBotCount+1,used:number[]=[];
- const preference=soloRandomSpawn?['northwest','north','northeast','west','center','east','southwest','south','southeast'][Math.floor(Math.random()*9)]!:soloSpawnPreference;
- const humanHome=chooseSpawnSite(preference,used,false);used.push(humanHome);
+ const actualMap=soloMap==='random'?WORLD_MAPS[Math.floor(Math.random()*WORLD_MAPS.length)]!.id:soloMap,mapName=mapTitle(actualMap);
+ const mapSeed=Math.floor(Math.random()*1_000_000_000),generated=createWorldTiles(actualMap,mapSeed),tiles=generated.tiles;
+ const teamSize=soloMode==='duos'?2:soloMode==='trios'?3:soloMode==='squads'?4:1,used:number[]=[];
  const names=soloAnonymous?['Commander',...Array.from({length:49},(_,i)=>'Nation '+String(i+1))]:[nickname,...BOT_NAMES.slice(0,49)];
- const players:Player[]=Array.from({length:totalPlayers},(_,i)=>{
-  const home=i===0?humanHome:chooseSpawnSite('center',used,true);
-  if(i>0)used.push(home);
-  const id=i===0?'human':'bot-'+i;
-  clearSpawnArea(tiles,home,id,playerColor(i),actualMap,mapSeed);
-  return{id,name:(names[i]||('Commander '+(i+1)))+(i>BOT_NAMES.length?' '+i:''),color:playerColor(i),gold:160,score:0,connected:true,home,team:Math.floor(i/teamSize),workerRatio:30};
- });
+ const players:Player[]=[{id:'human',name:names[0]||nickname,color:playerColor(0),gold:160,score:0,connected:true,home:-1,team:0,workerRatio:30,territory:0,troopsTotal:0,troopMax:102}];
+ for(let i=1;i<=soloBotCount;i++){
+  const home=chooseSpawnSite('center',used,true,actualMap,mapSeed,tiles);
+  if(home<0)break;
+  if(!clearSpawnArea(tiles,home,'bot-'+i,playerColor(i),actualMap,mapSeed))continue;
+  used.push(home);
+  players.push({id:'bot-'+i,name:(names[i]||('Nation '+i)),color:playerColor(i),gold:160,score:0,connected:true,home,team:Math.floor(i/teamSize),workerRatio:30,territory:spawnBlobForMap([],home,actualMap,mapSeed)?.length||49,troopsTotal:36,troopMax:150});
+ }
  game={width:WORLD_WIDTH,height:WORLD_HEIGHT,tiles,players,tick:0,round:1,mapName,mapSeed,playable:generated.playable,capacity:50,ships:[]};
- soloWorkerRatio=30;boatMode=false;requestedChunks.clear();receivedChunks.clear();cameraZoom=8;cameraX=humanHome%WORLD_WIDTH;cameraY=Math.floor(humanHome/WORLD_WIDTH);
- setConnection('SOLO MATCH',true);
+ soloWorkerRatio=30;boatMode=false;requestedChunks.clear();receivedChunks.clear();cameraZoom=8;cameraX=WORLD_WIDTH/2;cameraY=WORLD_HEIGHT/2;
+ setConnection('SOLO SPAWN',true);
  el('solo-toolbar').classList.remove('hidden');el('solo-save-actions').classList.remove('hidden');
- (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
+ (el('pause-solo') as HTMLButtonElement).textContent='▶ STARTS AFTER PLACEMENT';
  (el('speed-solo') as HTMLButtonElement).textContent='1× SPEED';
  el('match-banner').classList.add('hidden');
+ el('spawn-placement-panel').classList.remove('hidden');
+ el('spawn-phase-title').textContent='CHOOSE YOUR STARTING TERRITORY';
+ el('spawn-phase-help').textContent='Click open land to place your radius-4 starting blob. Water, mountains, and occupied areas cannot be selected.';
+ el('spawn-phase-roster').innerHTML=players.map(player=>'<div class="spawn-roster-item"><i style="background:'+escapeHtml(player.color)+'"></i>'+escapeHtml(player.name)+'<small>'+(player.id==='human'?'CHOOSING':'READY')+'</small></div>').join('');
+ el('floating-dock').classList.add('hidden');
  el('world-name').textContent=mapName.toUpperCase();el('round').textContent='1';
- report(players.length===1?'🌌 Empty frontier. Click any land direction to expand.':'🤖 '+soloBotCount+' AI commanders · '+soloMode.toUpperCase()+' · '+soloDifficulty.toUpperCase()+' · '+mapName.toUpperCase()+'. Click any land direction to expand using 25% of national troops.');
- applyCamera();render();resetSoloTimer();
+ report('🧭 Place your starting territory. Your campaign begins as soon as you choose a valid open location.');
+ applyCamera();render();
 }
 function resetSoloTimer(){
  if(localTimer)clearInterval(localTimer);
