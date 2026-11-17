@@ -58,7 +58,8 @@ const FRAGMENT_SHADER = "#version 300 es\n" +
   " if(terrain==0){float edge=clamp(1.35/uZoom,0.035,0.15);if(terrainAtCell(cell+ivec2(-1,0))!=0)coast=max(coast,1.0-smoothstep(0.0,edge,local.x));if(terrainAtCell(cell+ivec2(1,0))!=0)coast=max(coast,1.0-smoothstep(0.0,edge,1.0-local.x));if(terrainAtCell(cell+ivec2(0,-1))!=0)coast=max(coast,1.0-smoothstep(0.0,edge,local.y));if(terrainAtCell(cell+ivec2(0,1))!=0)coast=max(coast,1.0-smoothstep(0.0,edge,1.0-local.y));color=mix(color,vec3(0.18,0.43,0.49),coast*0.58);}\n" +
   " float border=0.0;\n" +
   " if(owner>0){float edge=clamp(1.25/uZoom,0.035,0.14);if(ownerAtCell(cell+ivec2(-1,0))!=owner)border=max(border,1.0-smoothstep(0.0,edge,local.x));if(ownerAtCell(cell+ivec2(1,0))!=owner)border=max(border,1.0-smoothstep(0.0,edge,1.0-local.x));if(ownerAtCell(cell+ivec2(0,-1))!=owner)border=max(border,1.0-smoothstep(0.0,edge,local.y));if(ownerAtCell(cell+ivec2(0,1))!=owner)border=max(border,1.0-smoothstep(0.0,edge,1.0-local.y));color=mix(color,color*0.37,border*0.92);}\n" +
-  " if(building>0&&owner>0&&uZoom>=5.0){vec2 d=abs(local-0.5);float stamp=1.0-smoothstep(0.115,0.16,max(d.x,d.y));vec3 stampColor=vec3(0.96,0.86,0.60);if(building==2)stampColor=vec3(0.56,0.88,0.98);else if(building==3)stampColor=vec3(0.42,0.91,0.92);else if(building==4)stampColor=vec3(0.98,0.68,0.52);else if(building==5)stampColor=vec3(0.98,0.82,0.45);else if(building==6)stampColor=vec3(0.57,0.91,0.59);color=mix(color,stampColor,stamp*0.94);}\n" +
+  " if(building==7&&owner>0&&uZoom>=4.0){float roadH=1.0-smoothstep(0.12,0.19,abs(local.y-0.5));float roadV=1.0-smoothstep(0.12,0.19,abs(local.x-0.5));float road=max(roadH,roadV);color=mix(color,vec3(0.16,0.22,0.29),road*0.96);float laneH=1.0-smoothstep(0.012,0.026,abs(local.y-0.5));float laneV=1.0-smoothstep(0.012,0.026,abs(local.x-0.5));float dash=max(laneH*step(0.45,fract(local.x*5.0)),laneV*step(0.45,fract(local.y*5.0)));color=mix(color,vec3(0.98,0.79,0.39),dash*road*0.9);}\n" +
+  " else if(building>0&&owner>0&&uZoom>=5.0){vec2 d=abs(local-0.5);float stamp=1.0-smoothstep(0.17,0.24,max(d.x,d.y));vec3 stampColor=vec3(0.96,0.86,0.60);if(building==2)stampColor=vec3(0.56,0.88,0.98);else if(building==3)stampColor=vec3(0.42,0.91,0.92);else if(building==4)stampColor=vec3(0.98,0.68,0.52);else if(building==5)stampColor=vec3(0.98,0.82,0.45);else if(building==6)stampColor=vec3(0.57,0.91,0.59);color=mix(color,stampColor,stamp*0.94);}\n" +
   " if(uGrid>0.5&&uZoom>5.0&&terrain!=0){float gridEdge=min(min(local.x,1.0-local.x),min(local.y,1.0-local.y));float gridLine=1.0-smoothstep(0.008,0.03,gridEdge);color=mix(color,color*0.76,gridLine*0.42);}\n" +
   " outColor=vec4(color,1.0);\n" +
   "}\n";
@@ -71,7 +72,7 @@ function terrainCode(terrain: WorldTile["terrain"]): number {
 }
 
 function buildingCode(tile: WorldTile | undefined): number {
-  const type = tile?.buildings?.[0]?.type;
+  const type = tile?.buildings?.find(building => building.type === 'highway')?.type || tile?.buildings?.[0]?.type;
   switch (type) {
     case "city": return 1;
     case "factory": return 2;
@@ -79,6 +80,7 @@ function buildingCode(tile: WorldTile | undefined): number {
     case "defense_post": return 4;
     case "market": return 5;
     case "farm": return 6;
+    case "highway": return 7;
     default: return 0;
   }
 }
