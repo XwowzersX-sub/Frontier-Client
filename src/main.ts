@@ -13,7 +13,8 @@ type Building = {type:BuildingType;level:number};
 type Tile = { owner: string | null; terrain: 'plain' | 'forest' | 'mountain' | 'water'; troops: number; buildings?: Building[] };
 type Player = { id: string; name: string; color: string; gold: number; score: number; connected: boolean; home: number; team?:number; workerRatio?:number; territory?:number; troopsTotal?:number; troopMax?:number; troopRate?:number; goldRate?:number };
 type ShipView = {id:string;owner:string;x:number;y:number;kind:string;path?:number[];step?:number;from?:number;to?:number;destinationOwner?:string};
-type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; updates?:Array<[number,Tile]> };
+type ExpansionFrontView={owner:string;tile:number;troops:number};
+type GameState = { width: number; height: number; tiles: Tile[]; players: Player[]; tick: number; round?: number; mapName?: string; mapSeed?:number; playable?:number; capacity?: number; ships?:ShipView[]; expansions?:ExpansionFrontView[]; updates?:Array<[number,Tile]> };
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
 <div id="menu-screen" class="screen home-screen">
@@ -195,7 +196,7 @@ function handleNetworkState(incoming:GameState){
   cameraZoom=8;cameraX=me&&me.home>=0?me.home%incoming.width:incoming.width/2;
   cameraY=me&&me.home>=0?Math.floor(me.home/incoming.width):incoming.height/2;
  }else if(game){
-  game.players=incoming.players;game.tick=incoming.tick;game.round=incoming.round;game.mapName=incoming.mapName;game.mapSeed=incoming.mapSeed;game.playable=incoming.playable;game.capacity=incoming.capacity;game.ships=incoming.ships||[];
+  game.players=incoming.players;game.tick=incoming.tick;game.round=incoming.round;game.mapName=incoming.mapName;game.mapSeed=incoming.mapSeed;game.playable=incoming.playable;game.capacity=incoming.capacity;game.ships=incoming.ships||[];game.expansions=incoming.expansions||[];
   for(const [index,tile] of incoming.updates||[])if(index>=0&&index<game.tiles.length)game.tiles[index]=tile;
  }
  setConnection('ONLINE',true);draw();requestChunksForView();updateStats();
@@ -845,7 +846,21 @@ function draw(){
    ctx.restore();
   }
  }
-
+ const fronts:ExpansionFrontView[]=mode==='single'
+  ?localExpansions.map(exp=>({owner:exp.owner,tile:exp.candidates[Math.min(exp.cursor,Math.max(0,exp.candidates.length-1))]?.index??exp.launchIndex,troops:Math.ceil(exp.remaining)}))
+  :(current.expansions||[]);
+ for(const front of fronts){
+  const x=(front.tile%current.width-cameraX)*tilePx+cssW/2+tilePx/2;
+  const y=(Math.floor(front.tile/current.width)-cameraY)*tilePx+cssH/2+tilePx/2;
+  if(x<-24||y<-24||x>cssW+24||y>cssH+24)continue;
+  const owner=current.players.find(player=>player.id===front.owner),label=String(Math.max(0,Math.ceil(front.troops)));
+  ctx.save();ctx.font='bold 10px "DM Mono",monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+  const width=Math.max(24,ctx.measureText(label).width+12),height=20;
+  ctx.shadowColor=owner?.color||'#e8c76e';ctx.shadowBlur=10;ctx.fillStyle=owner?.color||'#e8c76e';
+  ctx.beginPath();ctx.arc(x,y,width/2,0,Math.PI*2);ctx.fill();
+  ctx.shadowBlur=0;ctx.strokeStyle='#ffffffcc';ctx.lineWidth=1.2;ctx.stroke();
+  ctx.fillStyle='#07131b';ctx.fillText(label,x,y+.5);ctx.restore();
+ }
 }
 function fieldRank(score:number){
  if(score>=180)return 'GRANDMASTER';
