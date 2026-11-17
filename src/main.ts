@@ -335,7 +335,7 @@ function startSinglePlayer(){
  (el('speed-solo') as HTMLButtonElement).textContent='1× SPEED';
  el('match-banner').classList.add('hidden');
  el('world-name').textContent=mapName.toUpperCase();el('round').textContent='1';
- report(players.length===1?'🌌 Empty frontier. Expand to the land victory target.':'🤖 '+soloBotCount+' AI commanders · '+soloMode.toUpperCase()+' · '+soloDifficulty.toUpperCase()+' · '+mapName.toUpperCase()+'. Select a territory and send an army.');
+ report(players.length===1?'🌌 Empty frontier. Click any land direction to expand.':'🤖 '+soloBotCount+' AI commanders · '+soloMode.toUpperCase()+' · '+soloDifficulty.toUpperCase()+' · '+mapName.toUpperCase()+'. Click any land direction to expand using 25% of national troops.');
  applyCamera();render();resetSoloTimer();
 }
 function resetSoloTimer(){
@@ -680,7 +680,7 @@ function localTick(){
   const stats=summary.get(p.id)!;
   const maxTroops=Math.floor(2*(Math.pow(Math.max(1,stats.land),.6)+50)+stats.cityLevels*250);
   const bot=p.id.startsWith('bot-');
-  const baseGoldPerSecond=bot?.5:1;
+  const baseGoldPerSecond=bot ? 0.5 : 1;
   const troopRate=troopGrowthPerSecond(stats.troops,maxTroops,bot?.5:1)*(1+Math.min(12,stats.farms)*.08);
   p.territory=stats.land;p.troopsTotal=stats.troops;p.troopMax=maxTroops;
   p.troopRate=soloInfiniteTroops&&p.id==='human'?0:troopRate;
@@ -773,10 +773,7 @@ function draw(){
   const x=(sx-cameraX)*tilePx+cssW/2,y=(sy-cameraY)*tilePx+cssH/2;
   if(x>-tilePx&&y>-tilePx&&x<cssW&&y<cssH){ctx.save();ctx.strokeStyle='#93f6ff';ctx.lineWidth=Math.max(1.5,tilePx*.11);ctx.shadowColor='#52e5ff';ctx.shadowBlur=10;ctx.strokeRect(x+1,y+1,tilePx-2,tilePx-2);ctx.restore();}
  }
- if(selectedSource>=0&&hoverTile>=0){
-  const sx=selectedSource%current.width,sy=Math.floor(selectedSource/current.width),tx=hoverTile%current.width,ty=Math.floor(hoverTile/current.width);
-  if(Math.hypot(sx-tx,sy-ty)<=MAX_MARCH_DISTANCE){ctx.save();ctx.strokeStyle='#82f4ffcc';ctx.lineWidth=Math.max(1.5,tilePx*.12);ctx.setLineDash([tilePx*.7,tilePx*.5]);ctx.shadowColor='#54eaff';ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo((sx-cameraX+.5)*tilePx+cssW/2,(sy-cameraY+.5)*tilePx+cssH/2);ctx.lineTo((tx-cameraX+.5)*tilePx+cssW/2,(ty-cameraY+.5)*tilePx+cssH/2);ctx.stroke();ctx.restore();}
- }
+
 }
 function fieldRank(score:number){
  if(score>=180)return 'GRANDMASTER';
