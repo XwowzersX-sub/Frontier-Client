@@ -480,7 +480,7 @@ type LocalExpansion={owner:string;sent:number;remaining:number;launchIndex:numbe
 const localExpansions:LocalExpansion[]=[];
 function buildLocalExpansionFront(ownerId:string,owned:{index:number;x:number;y:number;tile:Tile}[],launchIndex:number,dirX:number,dirY:number,targetIndex:number,sent:number):ExpansionCandidate[]{
  const current=game;if(!current)return[];
- const size=current.width*current.height,visited=new Uint8Array(size),queue=new Int32Array(size);
+ const size=current.width*current.height,visited=new Uint8Array(size),queue=new Int32Array(size),edgeByIndex=new Float32Array(size);edgeByIndex.fill(Infinity);
  const candidates:ExpansionCandidate[]=[];
  let head=0,tail=0;
  const cx=owned.reduce((sum,v)=>sum+v.x,0)/owned.length,cy=owned.reduce((sum,v)=>sum+v.y,0)/owned.length;
@@ -502,20 +502,19 @@ function buildLocalExpansionFront(ownerId:string,owned:{index:number;x:number;y:
    const forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
    const targetBias=Math.hypot(tx-x,ty-y)*.0007;
    const rank=.65+lateral*.018-forward*.012+targetBias+(valueNoise(x*.08,y*.08,current.mapSeed||1)-.5)*.035;
-   visited[next]=1;queue[tail++]=next;
+   visited[next]=1;edgeByIndex[next]=rank;queue[tail++]=next;
    candidates.push({index:next,edge:rank,pressure:getGameTile(next).terrain==='forest'?.27:.22});
   }
  }
  while(head<tail&&candidates.length<limit){
   const index=queue[head++]!,x=index%current.width,y=Math.floor(index/current.width);
-  const parent=candidates.find(v=>v.index===index);
-  const parentEdge=parent?.edge??1;
+  const parentEdge=edgeByIndex[index]||1;
   for(const next of neighborsLocal(index)){
    if(next<0||visited[next]||!canEnter(next)||tail>=queue.length)continue;
    const nx=next%current.width,ny=Math.floor(next/current.width),stepX=nx-x,stepY=ny-y;
    const forwardStep=stepX*dirX+stepY*dirY,lateralStep=Math.abs(stepX*dirY-stepY*dirX);
    const edge=parentEdge+.86-forwardStep*.24+lateralStep*.10+(valueNoise(nx*.11,ny*.11,current.mapSeed||1)-.5)*.025;
-   visited[next]=1;queue[tail++]=next;
+   visited[next]=1;edgeByIndex[next]=edge;queue[tail++]=next;
    candidates.push({index:next,edge,pressure:getGameTile(next).terrain==='forest'?.27:.22});
    if(candidates.length>=limit)break;
   }
