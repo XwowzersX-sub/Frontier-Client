@@ -209,3 +209,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 #mini-map{display:block;width:100%;height:auto;aspect-ratio:1;image-rendering:pixelated;border:1px solid #5c94a7;border-radius:7px;cursor:crosshair}
 @media(max-width:900px){.minimap-panel{width:148px;top:78px;right:8px;padding:6px}}
 @media(max-width:600px){.minimap-panel{width:98px;top:121px;right:7px;padding:4px;border-radius:9px}.minimap-panel>div{font-size:6px;margin-bottom:3px}.minimap-panel>div span{display:none}}
+
+/* GPU map pass plus transparent interaction overlay */
+#map-overlay{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:1}
