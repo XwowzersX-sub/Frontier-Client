@@ -653,9 +653,15 @@ function advanceLocalShips(){
  }
  game.ships=fleet;
 }
+function troopGrowthPerSecond(troops:number,maxTroops:number,multiplier=1){
+ if(maxTroops<=0||troops>=maxTroops)return 0;
+ const openFrontScaledPerTick=.01+Math.pow(Math.max(0,troops),.73)/(4*Math.pow(1000,.27));
+ return Math.max(0,openFrontScaledPerTick*10*(1-troops/maxTroops)*multiplier);
+}
 function localTick(){
  if(!game||mode!=='single'||soloPaused||matchWinner)return;
  game.tick++;
+ const durationSeconds=4*soloSpeed;
  const summary=new Map<string,{land:number;troops:number;cityLevels:number;farms:number;income:number;owned:number[]}>();
  for(const p of game.players)summary.set(p.id,{land:0,troops:0,cityLevels:0,farms:0,income:0,owned:[]});
  for(let i=0;i<game.tiles.length;i++){
@@ -671,14 +677,22 @@ function localTick(){
   }
  }
  for(const p of game.players){
-  const stats=summary.get(p.id)!;const workers=Math.max(0,Math.min(100,Number(p.workerRatio??(p.id==='human'?soloWorkerRatio:30))));
-  const maxTroops=Math.floor(2*(Math.pow(Math.max(1,stats.land),.6)*15+50)+stats.cityLevels*180);
-  p.gold=(soloInfiniteGold&&p.id==='human')?999999:Math.min(999999,p.gold+Math.max(1,Math.floor(stats.land*(.2+workers*.035)))+stats.income);
-  if(soloInfiniteTroops&&p.id==='human'){for(const i of stats.owned){const t=game.tiles[i]!;t.troops=9999;}}
-  else if(game.tick%2===0&&stats.owned.length){
+  const stats=summary.get(p.id)!;
+  const maxTroops=Math.floor(2*(Math.pow(Math.max(1,stats.land),.6)+50)+stats.cityLevels*250);
+  const bot=p.id.startsWith('bot-');
+  const baseGoldPerSecond=bot?.5:1;
+  const troopRate=troopGrowthPerSecond(stats.troops,maxTroops,bot?.5:1)*(1+Math.min(12,stats.farms)*.08);
+  p.territory=stats.land;p.troopsTotal=stats.troops;p.troopMax=maxTroops;
+  p.troopRate=soloInfiniteTroops&&p.id==='human'?0:troopRate;
+  p.goldRate=baseGoldPerSecond+stats.income/durationSeconds;
+  p.gold=(soloInfiniteGold&&p.id==='human')?999999:Math.min(999999,p.gold+baseGoldPerSecond*durationSeconds+stats.income);
+  if(soloInfiniteTroops&&p.id==='human'){
+   for(const i of stats.owned)game.tiles[i]!.troops=9999;
+   p.troopsTotal=stats.owned.length*9999;
+  }else if(stats.owned.length){
    const home=game.tiles[p.home]?.owner===p.id?p.home:stats.owned[0]!;
-   const growth=(2+Math.sqrt(stats.troops)*.08)*(1+Math.min(12,stats.farms)*.08)*(1-stats.troops/Math.max(1,maxTroops))*(1-workers/135);
-   const add=Math.max(0,Math.floor(growth));if(add)game.tiles[home]!.troops+=add;
+   const add=Math.min(Math.max(0,maxTroops-stats.troops),troopRate*durationSeconds);
+   if(add>0){game.tiles[home]!.troops+=add;p.troopsTotal=stats.troops+add;}
   }
  }
  advanceLocalShips();
@@ -784,27 +798,30 @@ function updateStats(){
  });
  if(mode==='multi'&&me?.territory!==undefined)owned=me.territory;
  if(mode==='multi'&&me?.troopsTotal!==undefined)troopCurrent=me.troopsTotal;
- const troopMaximum=mode==='multi'?(me?.troopMax??Math.floor(2*(Math.pow(Math.max(1,owned),.6)*15+50)+cityLevels*180)):Math.floor(2*(Math.pow(Math.max(1,owned),.6)*15+50)+cityLevels*180);
- el('troop-cap-label').textContent=troopCurrent.toLocaleString()+' / '+troopMaximum.toLocaleString();
+ const calculatedCap=Math.floor(2*(Math.pow(Math.max(1,owned),.6)+50)+cityLevels*250);
+ const troopMaximum=mode==='multi'?(me?.troopMax??calculatedCap):calculatedCap;
+ const troopRate=me?.troopRate??troopGrowthPerSecond(troopCurrent,troopMaximum);
+ const goldRate=me?.goldRate??1;
+ const rateText=(value:number)=>value>=100?Math.round(value).toLocaleString():value.toFixed(1);
+ el('troop-cap-label').textContent=Math.round(troopCurrent).toLocaleString()+' / '+troopMaximum.toLocaleString();
  (el('troop-cap-fill') as HTMLElement).style.width=(troopMaximum?Math.min(100,troopCurrent/troopMaximum*100):0)+'%';
- el('gold').textContent=me?String(me.gold):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);
+ el('troop-rate-label').textContent='+'+rateText(troopRate)+'/s';
+ el('gold-rate-label').textContent='+'+rateText(goldRate)+'/s';
+ el('gold').textContent=me?String(Math.floor(me.gold)):'0';el('territory').textContent=String(owned);el('score').textContent='SCORE '+(me?.score||0);
  el('rank-label').textContent=fieldRank(me?.score||0);
  el('online').textContent=(mode==='single'?String(current?.players.length||0):String(current?.players.filter(p=>p.connected).length||0))+'/'+(current?.capacity||50);
  el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
  const selected=selectedSource>=0&&current?getGameTile(selectedSource):null;
- el('available-troops').textContent=selected&&selected.owner===myId?String(selected.troops):'—';
- el('selected-info').textContent=selected&&selected.owner===myId?'TROOPS '+selected.troops+' · '+selected.terrain.toUpperCase()+' · '+(selected.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
- el('tile-info').textContent=boatMode?'🚢 FERRY MODE · SELECT A COASTAL DESTINATION':activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ SELECT A SOURCE · CLICK A DESTINATION TO MARCH · '+(selectedSource>=0?'SOURCE '+selectedSource:'NO SOURCE');
+ el('available-troops').textContent=selected&&selected.owner===myId?String(Math.floor(selected.troops)):'—';
+ el('selected-info').textContent=selected&&selected.owner===myId?'TROOPS '+Math.floor(selected.troops)+' · '+selected.terrain.toUpperCase()+' · '+(selected.buildings||[]).map(b=>b.type.replace('_',' ')).join(', '):'No territory selected';
+ el('tile-info').textContent=boatMode?'🚢 FERRY MODE · SELECT A COASTAL DESTINATION':activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ CLICK ANY LAND TARGET · SEND '+forcePercent+'% OF NATIONAL TROOPS · NO SOURCE REQUIRED';
  el('tile-title').textContent=boatMode?'🚢 SETTLEMENT FERRY':activeBuilding?'🏗 CONSTRUCTION MODE':'🌎 '+(current?.mapName||'WORLD MAP');
  el('turn').textContent=String(current?.tick||0);
- el('worker-ratio-label').textContent=soloWorkerRatio+'%';
- const ratio=el('worker-ratio') as HTMLInputElement;
- if(document.activeElement!==ratio)ratio.value=String(me?.workerRatio??soloWorkerRatio);
  if(mode==='single'&&soloLengthMinutes>0&&current){const remaining=Math.max(0,soloLengthMinutes*15-current.tick)*4;el('time-left').textContent=Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');}else el('time-left').textContent='∞';
  const hint=el('build-hint');
  if(boatMode)hint.textContent='🚢 Select a coastal Port tile first, then choose an unclaimed coastal landing site. Ferries establish peaceful island settlements.';
  else if(activeBuilding)hint.textContent='Selected: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your own land tiles to construct it. ESC cancels.';
- else hint.textContent='Ports enable ferries and automatic trade routes. Cities increase troop capacity; factories and markets increase gold income; farms improve growth.';
+ else hint.textContent='Click a neutral or rival land direction to expand. Your national troop pool automatically launches from the nearest outer border. Cities increase capacity; factories and markets add gold.';
  document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.classList.toggle('build-selected',button.dataset.building===activeBuilding));
  (el('boat-mode') as HTMLButtonElement).classList.toggle('build-selected',boatMode);
 }
@@ -816,36 +833,33 @@ canvas.addEventListener('click',event=>{
  if(mode==='multi'&&!game.tiles[index]){requestChunkForTile(index);report('🗺 Loading this section of the map…');return;}
  const tile=mode==='single'?getGameTile(index):game.tiles[index]!;
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
+ if(boatMode){
+  const source=selectedSource>=0?getGameTile(selectedSource):null;
+  const hasPort=!!source&&source.owner===myId&&(source.buildings||[]).some(b=>b.type==='port');
+  if(tile.owner===myId){
+   selectedSource=index;const isPort=(tile.buildings||[]).some(b=>b.type==='port');
+   report(isPort?'⚓ Port selected. Now click an unclaimed coastal tile to send a ferry.':'🚢 This tile has no Port. Select one of your coastal Ports.');
+   updateStats();draw();return;
+  }
+  if(!hasPort){report('🚢 Select one of your coastal Ports first.');return;}
+  if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner){report('🚢 Choose unclaimed coastal land for the settlement ferry.');return;}
+  if(mode==='single')localSendBoat(selectedSource,index);
+  else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'boat',source:selectedSource,target:index}));
+  boatMode=false;updateStats();render();return;
+ }
  if(tile.owner===myId){
   selectedSource=index;hoverTile=-1;
   const isPort=(tile.buildings||[]).some(b=>b.type==='port');
-  report(boatMode?(isPort?'⚓ Port selected. Now click an unclaimed coastal tile to send a ferry.':'🚢 Select a territory with a Port to launch a ferry.'):(isPort?'⚓ Port selected. You can manage its sea routes.':'🎯 Launch territory selected. Choose a destination up to '+MAX_MARCH_DISTANCE+' tiles away.'));
+  report(isPort?'⚓ Port selected for inspection. You can start expansion from anywhere on your border.':'📍 Territory selected for inspection. Click any neutral or rival land to expand from your whole nation.');
   updateStats();draw();return;
  }
- const sourceIndex=selectedSource>=0&&getGameTile(selectedSource).owner===myId?selectedSource:-1;
- if(sourceIndex<0){report(boatMode?'🚢 Select one of your coastal Ports first.':'🧭 Select one of your territories first, then choose a destination.');return;}
- if(boatMode){
-  const source=getGameTile(sourceIndex);
-  if(!(source.buildings||[]).some(b=>b.type==='port')){report('🚢 Your selected source needs a Port.');return;}
-  if(mode==='single')localSendBoat(sourceIndex,index);
-  else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'boat',source:sourceIndex,target:index}));
-  boatMode=false;updateStats();render();return;
- }
- const distance=Math.hypot(sourceIndex%game.width-index%game.width,Math.floor(sourceIndex/game.width)-Math.floor(index/game.width));
- if(distance>MAX_MARCH_DISTANCE){report('Destination is too far. Choose a point within '+MAX_MARCH_DISTANCE+' tiles.');return;}
+ if(tile.terrain==='water'||tile.terrain==='mountain'){report('🧭 Aim at land to expand in that direction.');return;}
  if(mode==='single'){localClaim(index,forcePercent);render();checkSoloWinner();}
  else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'claim',tile:index,percent:forcePercent}));
 });
 document.querySelectorAll<HTMLButtonElement>('[data-force]').forEach(button=>button.addEventListener('click',()=>{forcePercent=Number(button.dataset.force);document.querySelectorAll('[data-force]').forEach(b=>b.classList.toggle('chosen',b===button));updateStats();}));
 document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button=>button.addEventListener('click',()=>{const tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));el('command-panel').classList.toggle('hidden',tab!=='command');el('build-panel').classList.toggle('hidden',tab!=='build');el('units-panel').classList.toggle('hidden',tab!=='units');}));
 document.querySelectorAll<HTMLButtonElement>('[data-building]').forEach(button=>button.addEventListener('click',()=>{activeBuilding=button.dataset.building as BuildingType;document.querySelectorAll('[data-building]').forEach(b=>b.classList.toggle('build-selected',b===button));report('Build mode: '+activeBuilding.replace('_',' ').toUpperCase()+'. Click one of your territories.');updateStats();}));
-el('worker-ratio').addEventListener('input',()=>{
- soloWorkerRatio=Number((el('worker-ratio') as HTMLInputElement).value);
- el('worker-ratio-label').textContent=soloWorkerRatio+'%';
- const me=game?.players.find(p=>p.id===myId);if(me)me.workerRatio=soloWorkerRatio;
- if(mode==='multi'&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'workers',ratio:soloWorkerRatio}));
- updateStats();
-});
 el('boat-mode').addEventListener('click',()=>{
  if(!game)return;
  if(boatMode){boatMode=false;report('🚢 Ferry mode cancelled.');}
