@@ -690,3 +690,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
  .leaderboard-tabs button{font-size:7px}
  .leaderboard-table th,.leaderboard-table td{padding:8px}
 }
+
+
+/* Consistent, always-visible building emblems in the build dock. */
+.build-grid button{min-height:104px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.build-grid button .building-icon{
+ box-sizing:border-box;width:52px!important;height:52px!important;
+ min-width:52px;max-width:52px;flex:0 0 52px;aspect-ratio:1/1;
+ display:grid;place-items:center;margin:3px auto 4px;
+ font-size:32px!important;line-height:1;visibility:visible;opacity:1;
+}
+
+/* Keep the in-world emblem palette and shapes legible across every zoom level. */
