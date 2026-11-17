@@ -111,21 +111,16 @@ function clearInteractionState(){
 }
 function selectLandmass(startIndex:number){
  const current=game;if(!current)return;
- const mapId=mapIdFromTitle(current.mapName||'continents'),seed=current.mapSeed||1;
- if(selectedLandmassMask&&selectedLandmassSeed===seed&&selectedLandmassName===mapId&&selectedLandmassMask[startIndex])return;
- const startX=startIndex%current.width,startY=Math.floor(startIndex/current.width);
- const startTerrain=current.tiles[startIndex]?.terrain||terrainAt(startX,startY,mapId,seed);
- if(startTerrain==='water'){clearLandmassSelection();return;}
+ const owner=current.tiles[startIndex]?.owner;
+ // Only player-owned territory is selectable. Neutral geography is never highlighted.
+ if(!owner){clearLandmassSelection();return;}
+ if(selectedLandmassMask&&selectedLandmassSeed===(current.mapSeed||1)&&selectedLandmassName===owner&&selectedLandmassMask[startIndex])return;
  const size=current.width*current.height,mask=new Uint8Array(size),queue=new Int32Array(size);
  let head=0,tail=0;mask[startIndex]=1;queue[tail++]=startIndex;
- const isLand=(index:number)=>{
-  const known=current.tiles[index];
-  if(known)return known.terrain!=='water';
-  return terrainAt(index%current.width,Math.floor(index/current.width),mapId,seed)!=='water';
- };
+ const isSameTerritory=(index:number)=>current.tiles[index]?.owner===owner;
  while(head<tail){
   const index=queue[head++]!,x=index%current.width,y=Math.floor(index/current.width);
-  const visit=(next:number)=>{if(next<0||next>=size||mask[next]||!isLand(next))return;mask[next]=1;queue[tail++]=next;};
+  const visit=(next:number)=>{if(next<0||next>=size||mask[next]||!isSameTerritory(next))return;mask[next]=1;queue[tail++]=next;};
   if(x>0)visit(index-1);
   if(x<current.width-1)visit(index+1);
   if(y>0)visit(index-current.width);
@@ -136,12 +131,12 @@ function selectLandmass(startIndex:number){
   const index=queue[n]!,x=index%current.width,y=Math.floor(index/current.width),p=index*4;
   const edge=(x===0||!mask[index-1]||x===current.width-1||!mask[index+1]||
     y===0||!mask[index-current.width]||y===current.height-1||!mask[index+current.width]);
-  pixels[p]=edge?115:72;pixels[p+1]=edge?237:190;pixels[p+2]=edge?255:239;pixels[p+3]=edge?190:34;
+  pixels[p]=edge?115:72;pixels[p+1]=edge?237:190;pixels[p+2]=edge?255:239;pixels[p+3]=edge?205:38;
  }
  const overlay=document.createElement('canvas');overlay.width=current.width;overlay.height=current.height;
  const overlayContext=overlay.getContext('2d');
  if(overlayContext)overlayContext.putImageData(image,0,0);
- selectedLandmassCanvas=overlay;selectedLandmassMask=mask;selectedLandmassSeed=seed;selectedLandmassName=mapId;selectedLandmassSize=tail;
+ selectedLandmassCanvas=overlay;selectedLandmassMask=mask;selectedLandmassSeed=current.mapSeed||1;selectedLandmassName=owner;selectedLandmassSize=tail;
 }
 const menu=el('menu-screen'),gameScreen=el('game-screen');
 (el('nickname') as HTMLInputElement).value=nickname;
@@ -875,7 +870,7 @@ function updateStats(){
  el('world-name').textContent=(current?.mapName||'LIVE WORLD').toUpperCase();el('round').textContent=String(current?.round||1);
  const selected=selectedSource>=0&&current?getGameTile(selectedSource):null;
  el('available-troops').textContent=selected&&selected.owner===myId?String(Math.floor(selected.troops)):'—';
- el('selected-info').textContent=selectedLandmassSize?'CONTINENT HIGHLIGHTED · '+selectedLandmassSize.toLocaleString()+' LAND CELLS'+(selected&&selected.owner===myId?' · '+Math.floor(selected.troops)+' TROOPS AT CLICKED TILE':''):'No continent selected';
+ el('selected-info').textContent=selectedLandmassSize?'TERRITORY HIGHLIGHTED · '+selectedLandmassSize.toLocaleString()+' TILES'+(selected&&selected.owner===myId?' · '+Math.floor(selected.troops)+' TROOPS AT CLICKED TILE':''):'No continent selected';
  el('tile-info').textContent=boatMode?'🚢 FERRY MODE · SELECT A COASTAL DESTINATION':activeBuilding?'🏗 BUILD MODE · '+activeBuilding.replace('_',' ').toUpperCase()+' · CLICK YOUR LAND':'⚔ CLICK A LAND DIRECTION · '+forcePercent+'% OF NATIONAL TROOPS · SLOW BORDER SPREAD';
  el('tile-title').textContent=boatMode?'🚢 SETTLEMENT FERRY':activeBuilding?'🏗 CONSTRUCTION MODE':'🌎 '+(current?.mapName||'WORLD MAP');
  el('turn').textContent=String(current?.tick||0);
@@ -894,7 +889,7 @@ canvas.addEventListener('click',event=>{
  const index=tileAt(event);if(index<0)return;
  if(mode==='multi'&&!game.tiles[index]){requestChunkForTile(index);report('🗺 Loading this section of the map…');return;}
  const tile=mode==='single'?getGameTile(index):game.tiles[index]!;
- if(tile.terrain==='water')clearLandmassSelection();else selectLandmass(index);
+ if(tile.owner)selectLandmass(index);else clearLandmassSelection();
  draw();updateStats();
  if(activeBuilding){tryBuild(index,activeBuilding);if(mode==='single'&&game)render();return;}
  if(boatMode){
