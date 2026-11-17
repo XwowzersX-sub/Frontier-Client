@@ -306,3 +306,5 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .boat-action{border-color:#64c9e2!important;color:#d8faff!important}
 @media(max-width:900px){.build-grid{grid-template-columns:repeat(4,minmax(72px,1fr))}.building-info{min-width:100%}}
 @media(max-width:600px){.build-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.build-grid button{min-height:76px;padding:6px 3px}.build-grid button .building-icon{width:34px;height:34px;font-size:22px}.build-grid button b{font-size:7px}.build-grid button small{font-size:6px}.building-info{gap:8px;padding:7px}.building-info-icon{flex-basis:40px;height:40px;font-size:25px}.building-info-copy p{font-size:7px}}
+
+#build-panel{display:flex;flex-direction:column;align-items:stretch;gap:8px}.dock-hint#build-hint{width:100%;max-width:none}
