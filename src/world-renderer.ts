@@ -41,6 +41,9 @@ const FRAGMENT_SHADER = "#version 300 es\n" +
   "ivec2 safeCell(ivec2 p) { return clamp(p,ivec2(0),ivec2(uMapSize)-ivec2(1)); }\n" +
   "int terrainAtCell(ivec2 p) { return int(floor(texelFetch(uWorld,safeCell(p),0).r*255.0+0.5)); }\n" +
   "int ownerAtCell(ivec2 p) { return int(floor(texelFetch(uWorld,safeCell(p),0).g*255.0+0.5)); }\n" +
+  "float boxFill(vec2 p, vec2 halfSize, float radius) { vec2 q=abs(p)-halfSize+vec2(radius); float d=length(max(q,0.0))+min(max(q.x,q.y),0.0)-radius; return 1.0-smoothstep(-0.025,0.025,d); }\n" +
+  "float lineStroke(vec2 p, vec2 a, vec2 b, float width) { vec2 pa=p-a, ba=b-a; float h=clamp(dot(pa,ba)/max(dot(ba,ba),0.0001),0.0,1.0); return 1.0-smoothstep(width,width+0.025,length(pa-ba*h)); }\n" +
+  "float circleStroke(vec2 p, float radius, float width) { return 1.0-smoothstep(width,width+0.025,abs(length(p)-radius)); }\n" +
   "void main() {\n" +
   " vec2 screenUv=vec2(vUv.x,1.0-vUv.y);\n" +
   " vec2 world=uCamera+(screenUv-0.5)*uViewport/uZoom;\n" +
@@ -59,6 +62,24 @@ const FRAGMENT_SHADER = "#version 300 es\n" +
   " float border=0.0;\n" +
   " if(owner>0){float edge=clamp(1.25/uZoom,0.035,0.14);if(ownerAtCell(cell+ivec2(-1,0))!=owner)border=max(border,1.0-smoothstep(0.0,edge,local.x));if(ownerAtCell(cell+ivec2(1,0))!=owner)border=max(border,1.0-smoothstep(0.0,edge,1.0-local.x));if(ownerAtCell(cell+ivec2(0,-1))!=owner)border=max(border,1.0-smoothstep(0.0,edge,local.y));if(ownerAtCell(cell+ivec2(0,1))!=owner)border=max(border,1.0-smoothstep(0.0,edge,1.0-local.y));color=mix(color,color*0.37,border*0.92);}\n" +
   " if(building==7&&owner>0&&uZoom>=4.0){float roadH=1.0-smoothstep(0.12,0.19,abs(local.y-0.5));float roadV=1.0-smoothstep(0.12,0.19,abs(local.x-0.5));float road=max(roadH,roadV);color=mix(color,vec3(0.16,0.22,0.29),road*0.96);float laneH=1.0-smoothstep(0.012,0.026,abs(local.y-0.5));float laneV=1.0-smoothstep(0.012,0.026,abs(local.x-0.5));float dash=max(laneH*step(0.45,fract(local.x*5.0)),laneV*step(0.45,fract(local.y*5.0)));color=mix(color,vec3(0.98,0.79,0.39),dash*road*0.9);}\n" +
+  " if(building>0&&owner>0&&terrain!=0){\n" +
+  "  vec2 p=(local-vec2(0.5))*2.0;\n" +
+  "  float badge=1.0-smoothstep(0.79,0.86,length(p));\n" +
+  "  float rim=1.0-smoothstep(0.035,0.075,abs(length(p)-0.78));\n" +
+  "  vec3 markerColor=vec3(0.42,0.83,0.98);\n" +
+  "  if(building==2)markerColor=vec3(1.0,0.63,0.29); else if(building==3)markerColor=vec3(0.29,0.86,0.98); else if(building==4)markerColor=vec3(1.0,0.76,0.36); else if(building==5)markerColor=vec3(0.53,0.91,0.65); else if(building==6)markerColor=vec3(0.72,0.91,0.38); else if(building==7)markerColor=vec3(1.0,0.83,0.42);\n" +
+  "  color=mix(color,vec3(0.018,0.043,0.061),badge*0.94);\n" +
+  "  color=mix(color,markerColor,rim*0.96);\n" +
+  "  vec2 q=p*1.08; float glyph=0.0;\n" +
+  "  if(building==1){glyph=max(glyph,boxFill(q+vec2(0.22,0.02),vec2(0.105,0.31),0.025));glyph=max(glyph,boxFill(q-vec2(0.055,-0.02),vec2(0.105,0.35),0.025));glyph=max(glyph,boxFill(q-vec2(0.27,0.10),vec2(0.085,0.23),0.02));}\n" +
+  "  else if(building==2){glyph=max(glyph,boxFill(q-vec2(0.0,0.19),vec2(0.34,0.14),0.025));glyph=max(glyph,lineStroke(q,vec2(-0.34,0.04),vec2(-0.12,-0.12),0.045));glyph=max(glyph,lineStroke(q,vec2(-0.12,-0.12),vec2(0.10,0.04),0.045));glyph=max(glyph,lineStroke(q,vec2(0.10,0.04),vec2(0.30,-0.12),0.045));glyph=max(glyph,boxFill(q-vec2(-0.22,-0.18),vec2(0.055,0.16),0.015));}\n" +
+  "  else if(building==3){glyph=max(glyph,lineStroke(q,vec2(0.0,0.34),vec2(0.0,-0.20),0.045));glyph=max(glyph,circleStroke(q-vec2(0.0,0.14),0.19,0.045));glyph=max(glyph,lineStroke(q,vec2(-0.29,-0.08),vec2(0.29,-0.08),0.045));glyph=max(glyph,lineStroke(q,vec2(-0.29,-0.08),vec2(-0.20,-0.25),0.045));glyph=max(glyph,lineStroke(q,vec2(0.29,-0.08),vec2(0.20,-0.25),0.045));}\n" +
+  "  else if(building==4){glyph=max(glyph,lineStroke(q,vec2(0.0,0.36),vec2(0.29,0.22),0.05));glyph=max(glyph,lineStroke(q,vec2(0.29,0.22),vec2(0.23,-0.12),0.05));glyph=max(glyph,lineStroke(q,vec2(0.23,-0.12),vec2(0.0,-0.34),0.05));glyph=max(glyph,lineStroke(q,vec2(0.0,-0.34),vec2(-0.23,-0.12),0.05));glyph=max(glyph,lineStroke(q,vec2(-0.23,-0.12),vec2(-0.29,0.22),0.05));glyph=max(glyph,lineStroke(q,vec2(-0.29,0.22),vec2(0.0,0.36),0.05));}\n" +
+  "  else if(building==5){glyph=max(glyph,boxFill(q-vec2(0.0,-0.10),vec2(0.29,0.22),0.035));glyph=max(glyph,lineStroke(q,vec2(-0.34,0.15),vec2(0.34,0.15),0.055));glyph=max(glyph,lineStroke(q,vec2(-0.34,0.15),vec2(-0.24,0.34),0.045));glyph=max(glyph,lineStroke(q,vec2(-0.24,0.34),vec2(-0.08,0.15),0.045));glyph=max(glyph,lineStroke(q,vec2(-0.08,0.15),vec2(0.08,0.34),0.045));glyph=max(glyph,lineStroke(q,vec2(0.08,0.34),vec2(0.24,0.15),0.045));glyph=max(glyph,lineStroke(q,vec2(0.24,0.15),vec2(0.34,0.15),0.045));}\n" +
+  "  else if(building==6){glyph=max(glyph,lineStroke(q,vec2(0.0,-0.34),vec2(0.0,0.32),0.05));glyph=max(glyph,lineStroke(q,vec2(0.0,0.12),vec2(-0.25,0.30),0.055));glyph=max(glyph,lineStroke(q,vec2(0.0,-0.02),vec2(0.25,0.18),0.055));glyph=max(glyph,lineStroke(q,vec2(0.0,-0.17),vec2(-0.22,-0.02),0.055));glyph=max(glyph,lineStroke(q,vec2(0.0,0.25),vec2(0.20,0.39),0.05));}\n" +
+  "  else if(building==7){glyph=max(glyph,lineStroke(q,vec2(-0.22,-0.36),vec2(-0.22,0.36),0.055));glyph=max(glyph,lineStroke(q,vec2(0.22,-0.36),vec2(0.22,0.36),0.055));glyph=max(glyph,lineStroke(q,vec2(0.0,-0.30),vec2(0.0,-0.12),0.035));glyph=max(glyph,lineStroke(q,vec2(0.0,0.00),vec2(0.0,0.18),0.035));glyph=max(glyph,lineStroke(q,vec2(0.0,0.30),vec2(0.0,0.36),0.035));}\n" +
+  "  color=mix(color,vec3(0.95,0.99,1.0),glyph*0.98);\n" +
+  " }\n" +
   " if(uGrid>0.5&&uZoom>5.0&&terrain!=0){float gridEdge=min(min(local.x,1.0-local.x),min(local.y,1.0-local.y));float gridLine=1.0-smoothstep(0.008,0.03,gridEdge);color=mix(color,color*0.76,gridLine*0.42);}\n" +
   " outColor=vec4(color,1.0);\n" +
   "}\n";
