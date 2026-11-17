@@ -756,7 +756,7 @@ function advanceLocalExpansions(){
   // Unclaimed settlement growth advances as a broad connected wave; contested land keeps its current progression.
   const settlementSweep=expansion.targetOwner===null;
   // Small, frequent steps make the frontier read as a continuous flow instead of a single large fill.
-  const batch=settlementSweep?Math.min(expansion.candidates.length-expansion.cursor,Math.max(8,Math.min(48,Math.ceil(expansion.frontWidth*.35)))):Math.max(6,Math.min(30,Math.ceil(expansion.frontWidth*.22)));
+  const batch=settlementSweep?Math.min(expansion.candidates.length-expansion.cursor,Math.max(4,Math.min(16,Math.ceil(expansion.frontWidth*.18)))):Math.max(3,Math.min(12,Math.ceil(expansion.frontWidth*.12)));
   const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
   while(expansion.cursor<end){
    const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
@@ -1196,7 +1196,7 @@ function updateTerritoryCounter(target:number){
  const animate=(now:number)=>{
   const elapsed=territoryCounterLastTime?Math.min(64,Math.max(0,now-territoryCounterLastTime)):16;
   territoryCounterLastTime=now;
-  const blend=1-Math.exp(-elapsed/115);
+  const blend=1-Math.exp(-elapsed/240);
   displayedTerritoryCount!+=(targetTerritoryCount-displayedTerritoryCount!)*blend;
   label.textContent=Math.round(displayedTerritoryCount!).toLocaleString();
   if(Math.abs(targetTerritoryCount-displayedTerritoryCount!)<.5){
