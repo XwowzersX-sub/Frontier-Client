@@ -451,15 +451,16 @@ function areAllies(attackerId:string,ownerId:string|null){
 }
 function localMarch(attackerId:string,targetIndex:number,percent:number){
  if(!game||targetIndex<0||targetIndex>=game.width*game.height)return 0;
- const target=game.tiles[targetIndex]||getGameTile(targetIndex),attacker=game.players.find(p=>p.id===attackerId);
+ const current=game;
+ const target=current.tiles[targetIndex]||getGameTile(targetIndex),attacker=current.players.find(p=>p.id===attackerId);
  if(!attacker||!target||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
  if(areAllies(attackerId,target.owner)){if(attackerId==='human')report('🤝 That territory belongs to an ally.');return 0;}
 
  const owned:{index:number;x:number;y:number;tile:Tile}[]=[];
  let totalTroops=0,centerX=0,centerY=0;
- game.tiles.forEach((tile,index)=>{
+ current.tiles.forEach((tile,index)=>{
   if(!tile||tile.owner!==attackerId)return;
-  const x=index%game.width,y=Math.floor(index/game.width);
+  const x=index%current.width,y=Math.floor(index/current.width);
   owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
  });
  if(!owned.length||totalTroops<1){if(attackerId==='human')report('⚔ Your nation has no available troops.');return 0;}
