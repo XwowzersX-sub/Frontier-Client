@@ -196,7 +196,7 @@ async function loadLeaderboard(){
   ?'YOUR RECORD · '+Number(mine.wins||0)+' WINS · '+Number(mine.losses||0)+' LOSSES · '+formatLeaderboardValue('land_claimed',mine.land_claimed)+' LAND · '+formatLeaderboardValue('play_time_seconds',mine.play_time_seconds)
   :'YOUR RECORD · Play a live match to start building your stats';
 }
-function showAccount(user:{id?:string;email?:string|null}|null){const b=el('logout');b.classList.toggle('hidden',!user);currentUserId=user?.id||'';el('auth-message').textContent=user?'Signed in as '+(user.email||'commander'):'Sign in to keep your account identity.';void loadLeaderboard();}
+function showAccount(user:{id?:string;email?:string|null}|null){const b=el('logout');b.classList.toggle('hidden',!user);currentUserId=user?.id||'';el('auth-message').textContent=user?'Signed in as '+(user.email||'commander'):'Sign in to keep your account identity.';queueMicrotask(()=>void loadLeaderboard());}
 document.querySelectorAll<HTMLButtonElement>('[data-leaderboard-sort]').forEach(button=>button.addEventListener('click',()=>{leaderboardSort=(button.dataset.leaderboardSort||'wins') as LeaderboardSort;void loadLeaderboard();}));
 setInterval(()=>{if(currentUserId)void loadLeaderboard();},60000);
 void supabase.auth.getUser().then(({data})=>showAccount(data.user));
