@@ -198,6 +198,7 @@ async function loadLeaderboard(){
 }
 function showAccount(user:{id?:string;email?:string|null}|null){const b=el('logout');b.classList.toggle('hidden',!user);currentUserId=user?.id||'';el('auth-message').textContent=user?'Signed in as '+(user.email||'commander'):'Sign in to keep your account identity.';void loadLeaderboard();}
 document.querySelectorAll<HTMLButtonElement>('[data-leaderboard-sort]').forEach(button=>button.addEventListener('click',()=>{leaderboardSort=(button.dataset.leaderboardSort||'wins') as LeaderboardSort;void loadLeaderboard();}));
+setInterval(()=>{if(currentUserId)void loadLeaderboard();},60000);
 void supabase.auth.getUser().then(({data})=>showAccount(data.user));
 supabase.auth.onAuthStateChange((_event,session)=>showAccount(session?.user??null));
 el('login').addEventListener('submit',async event=>{event.preventDefault();const {error}=await supabase.auth.signInWithPassword({email:(el('email') as HTMLInputElement).value,password:(el('password') as HTMLInputElement).value});el('auth-message').textContent=error?.message||'Signed in.';});
