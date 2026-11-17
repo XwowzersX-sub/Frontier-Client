@@ -378,7 +378,7 @@ function spawnBlobForMap(tiles:Tile[],center:number,mapId:string,seed:number):nu
  for(let y=Math.max(0,sy-4);y<=Math.min(WORLD_HEIGHT-1,sy+4);y++)for(let x=Math.max(0,sx-4);x<=Math.min(WORLD_WIDTH-1,sx+4);x++){
   const dx=x-(sx-.5),dy=y-(sy-.5);if(dx*dx+dy*dy>16)continue;
   const i=y*WORLD_WIDTH+x,tile=tiles[i]||baseTileAt(i,mapId,seed);
-  if(tile.owner||tile.terrain==='water'||tile.terrain==='mountain')return null;
+  if(tile.owner||tile.terrain==='water')return null;
   blob.push(i);
  }
  return blob.length>=35?blob:null;
@@ -562,68 +562,77 @@ function areAllies(attackerId:string,ownerId:string|null){
  return !!attacker&&!!defender&&attacker.team===defender.team;
 }
 type ExpansionCandidate={index:number;edge:number;pressure:number};
-type LocalExpansion={owner:string;sent:number;remaining:number;launchIndex:number;candidates:ExpansionCandidate[];cursor:number;captured:number};
+type LocalExpansion={owner:string;targetOwner:string|null;sent:number;remaining:number;defenderTroops:number;launchIndex:number;candidates:ExpansionCandidate[];cursor:number;captured:number};
 const localExpansions:LocalExpansion[]=[];
-function buildLocalExpansionFront(ownerId:string,owned:{index:number;x:number;y:number;tile:Tile}[],launchIndex:number,dirX:number,dirY:number,targetIndex:number,sent:number):ExpansionCandidate[]{
+function buildLocalExpansionFront(ownerId:string,targetOwner:string|null,owned:{index:number;x:number;y:number;tile:Tile}[],dirX:number,dirY:number,targetIndex:number,sent:number):ExpansionCandidate[]{
  const current=game;if(!current)return[];
  const size=current.width*current.height,visited=new Uint8Array(size),queue=new Int32Array(size),edgeByIndex=new Float32Array(size);edgeByIndex.fill(Infinity);
  const candidates:ExpansionCandidate[]=[];
  let head=0,tail=0;
  const cx=owned.reduce((sum,v)=>sum+v.x,0)/owned.length,cy=owned.reduce((sum,v)=>sum+v.y,0)/owned.length;
  const tx=targetIndex%current.width,ty=Math.floor(targetIndex/current.width);
- const limit=Math.min(16000,Math.max(120,Math.ceil(sent*70)));
+ const limit=Math.min(16000,Math.max(160,Math.ceil(sent*90)));
  const canEnter=(i:number)=>{
   const tile=getGameTile(i);
-  return tile.terrain!=='water'&&tile.terrain!=='mountain'&&tile.owner!==ownerId&&!areAllies(ownerId,tile.owner);
+  return tile.terrain!=='water'&&tile.owner===targetOwner;
  };
- const enqueue=(i:number,edge:number)=>{
-  if(i<0||i>=size||visited[i]||!canEnter(i)||tail>=queue.length)return;
-  visited[i]=1;queue[tail++]=i;
- };
- // Every exposed tile on the nation's border is a possible starting edge.
+ const seeds:{index:number;edge:number}[]=[];
  for(const cell of owned){
   for(const next of neighborsLocal(cell.index)){
    if(visited[next]||!canEnter(next))continue;
    const x=next%current.width,y=Math.floor(next/current.width),rx=x-cx,ry=y-cy;
    const forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
-   const targetBias=Math.hypot(tx-x,ty-y)*.0007;
-   const rank=.65+lateral*.018-forward*.012+targetBias+(valueNoise(x*.08,y*.08,current.mapSeed||1)-.5)*.035;
-   visited[next]=1;edgeByIndex[next]=rank;queue[tail++]=next;
-   candidates.push({index:next,edge:rank,pressure:getGameTile(next).terrain==='forest'?.27:.22});
+   const distanceToTarget=Math.hypot(tx-x,ty-y);
+   const edge=.55+lateral*.018-forward*.035+distanceToTarget*.0007+(valueNoise(x*.08,y*.08,current.mapSeed||1)-.5)*.025;
+   visited[next]=1;edgeByIndex[next]=edge;seeds.push({index:next,edge});
   }
+ }
+ // Like OpenFront's border queue, start with exposed border tiles, then add
+ // only adjacent tiles as the front advances. Seed ordering biases the clicked direction.
+ seeds.sort((left,right)=>left.edge-right.edge);
+ for(const seed of seeds){
+  if(tail>=queue.length)break;
+  queue[tail++]=seed.index;
+  const tile=getGameTile(seed.index);
+  const terrainCost=tile.terrain==='mountain'?.34:tile.terrain==='forest'?.19:.16;
+  candidates.push({index:seed.index,edge:seed.edge,pressure:terrainCost});
  }
  while(head<tail&&candidates.length<limit){
   const index=queue[head++]!,x=index%current.width,y=Math.floor(index/current.width);
   const parentEdge=edgeByIndex[index]||1;
   for(const next of neighborsLocal(index)){
-   if(next<0||visited[next]||!canEnter(next)||tail>=queue.length)continue;
+   if(visited[next]||!canEnter(next)||tail>=queue.length)continue;
    const nx=next%current.width,ny=Math.floor(next/current.width),stepX=nx-x,stepY=ny-y;
    const forwardStep=stepX*dirX+stepY*dirY,lateralStep=Math.abs(stepX*dirY-stepY*dirX);
-   const edge=parentEdge+.86-forwardStep*.24+lateralStep*.10+(valueNoise(nx*.11,ny*.11,current.mapSeed||1)-.5)*.025;
+   const edge=parentEdge+.86-forwardStep*.24+lateralStep*.10+(valueNoise(nx*.11,ny*.11,current.mapSeed||1)-.5)*.02;
    visited[next]=1;edgeByIndex[next]=edge;queue[tail++]=next;
-   candidates.push({index:next,edge,pressure:getGameTile(next).terrain==='forest'?.27:.22});
+   const tile=getGameTile(next),terrainCost=tile.terrain==='mountain'?.34:tile.terrain==='forest'?.19:.16;
+   candidates.push({index:next,edge,pressure:terrainCost});
    if(candidates.length>=limit)break;
   }
  }
- candidates.sort((left,right)=>left.edge-right.edge);
+ // Preserve breadth-first discovery order: every candidate is adjacent to land
+ // already held or captured before it, preventing disconnected "teleport" claims.
  return candidates;
 }
 function localMarch(attackerId:string,targetIndex:number,percent:number){
  if(!game||targetIndex<0||targetIndex>=game.width*game.height)return 0;
- const current=game;
- const target=current.tiles[targetIndex]||getGameTile(targetIndex),attacker=current.players.find(p=>p.id===attackerId);
- if(!attacker||!target||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
- if(areAllies(attackerId,target.owner)){if(attackerId==='human')report('🤝 That territory belongs to an ally.');return 0;}
+ const current=game,target=current.tiles[targetIndex]||getGameTile(targetIndex);
+ const attacker=current.players.find(p=>p.id===attackerId),targetOwner=target?.owner??null;
+ if(!attacker||!target||targetOwner===attackerId||target.terrain==='water')return 0;
+ if(areAllies(attackerId,targetOwner)){if(attackerId==='human')report('🤝 That territory belongs to an ally.');return 0;}
  if(localExpansions.filter(exp=>exp.owner===attackerId).length>=2){
   if(attackerId==='human')report('🌐 Your nation already has two expansion fronts moving. Let them advance first.');
   return 0;
  }
  const owned:{index:number;x:number;y:number;tile:Tile}[]=[];
- let totalTroops=0,centerX=0,centerY=0;
+ let totalTroops=0,centerX=0,centerY=0,targetTroops=0,targetLand=0;
  current.tiles.forEach((tile,index)=>{
-  if(!tile||tile.owner!==attackerId)return;
-  const x=index%current.width,y=Math.floor(index/current.width);
-  owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
+  if(!tile)return;
+  if(tile.owner===attackerId){
+   const x=index%current.width,y=Math.floor(index/current.width);
+   owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
+  }else if(targetOwner&&tile.owner===targetOwner){targetTroops+=tile.troops;targetLand++;}
  });
  if(!owned.length||totalTroops<1){if(attackerId==='human')report('⚔ Your nation has no available troops.');return 0;}
  centerX/=owned.length;centerY/=owned.length;
@@ -634,22 +643,22 @@ function localMarch(attackerId:string,targetIndex:number,percent:number){
  dirX/=distance;dirY/=distance;
  let launchIndex=-1,bestScore=-Infinity;
  for(const cell of owned){
-  const border=neighborsLocal(cell.index).some(next=>{const t=getGameTile(next);return t.owner!==attackerId&&t.terrain!=='water'&&t.terrain!=='mountain'&&!areAllies(attackerId,t.owner);});
+  const border=neighborsLocal(cell.index).some(next=>{const t=getGameTile(next);return t.owner===targetOwner&&t.terrain!=='water';});
   if(!border)continue;
   const rx=cell.x-centerX,ry=cell.y-centerY,forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
   const targetDistance=Math.hypot(tx-cell.x,ty-cell.y);
   const score=forward-lateral*.32-targetDistance*.015;
   if(score>bestScore){bestScore=score;launchIndex=cell.index;}
  }
- if(launchIndex<0){if(attackerId==='human')report('🛡 Your territory has no open land border to expand from.');return 0;}
+ if(launchIndex<0){if(attackerId==='human')report('🛡 Your nation has no connected border with that territory.');return 0;}
  const sent=Math.floor(totalTroops*Math.max(1,Math.min(100,percent))/100);
  if(sent<1){if(attackerId==='human')report('⚔ Not enough troops available.');return 0;}
- const candidates=buildLocalExpansionFront(attackerId,owned,launchIndex,dirX,dirY,targetIndex,sent);
+ const candidates=buildLocalExpansionFront(attackerId,targetOwner,owned,dirX,dirY,targetIndex,sent);
  if(!candidates.length){if(attackerId==='human')report('🛡 There is no connected land ahead of your border.');return 0;}
  const withdrawal=sent/totalTroops;
  for(const cell of owned)cell.tile.troops=Math.max(0,cell.tile.troops*(1-withdrawal));
- localExpansions.push({owner:attackerId,sent,remaining:sent,launchIndex,candidates,cursor:0,captured:0});
- if(attackerId==='human')report('🌐 Border front advancing in that direction. The troop count follows the leading edge.');
+ localExpansions.push({owner:attackerId,targetOwner,sent,remaining:sent,defenderTroops:targetTroops,launchIndex,candidates,cursor:0,captured:0});
+ if(attackerId==='human')report('🌐 Connected border front advancing through '+(targetOwner?'enemy':'unclaimed')+' territory. The front shows its remaining troops.');
  return candidates.length;
 }
 function localClaim(targetIndex:number,percent:number){return localMarch('human',targetIndex,percent)>0;}
@@ -665,23 +674,26 @@ function advanceLocalExpansions(){
   while(expansion.cursor<end){
    const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
    current.tiles[index]=tile;
-   if(tile.terrain==='water'||tile.terrain==='mountain'||tile.owner===expansion.owner||areAllies(expansion.owner,tile.owner))continue;
-   const defender=Math.ceil(tile.troops*((tile.buildings||[]).some(b=>b.type==='defense_post')?2:1));
-   const cost=candidate.pressure+defender*.42+((tile.buildings||[]).some(b=>b.type==='defense_post')?.65:0);
+   if(tile.terrain==='water'||tile.owner!==expansion.targetOwner)continue;
+   const onBorder=neighborsLocal(index).some(next=>getGameTile(next).owner===expansion.owner);
+   if(!onBorder)continue;
+   const defensePost=(tile.buildings||[]).some(b=>b.type==='defense_post');
+   const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
+   const cost=candidate.pressure*(expansion.targetOwner?strength:1)+(expansion.targetOwner?tile.troops*.015:0)+(defensePost?.55:0);
    if(expansion.remaining<cost){
-    if(tile.owner&&defender>0&&expansion.remaining>0){tile.troops=Math.max(0,defender-Math.floor(expansion.remaining*1.5));changed=true;}
+    if(expansion.targetOwner&&tile.troops>0&&expansion.remaining>0){tile.troops=Math.max(0,tile.troops-Math.floor(expansion.remaining*2));changed=true;}
     expansion.remaining=0;expansion.cursor=expansion.candidates.length;break;
    }
    expansion.remaining-=cost;
    if(tile.owner){const previous=current.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
-   tile.owner=expansion.owner;tile.troops=Math.max(0,Math.floor(Math.min(2,expansion.remaining*.035)));
+   tile.owner=expansion.owner;tile.troops=Math.max(0,Math.floor(Math.min(1,expansion.remaining*.025)));
    attacker.score++;expansion.captured++;changed=true;
   }
   if(expansion.cursor>=expansion.candidates.length){
    const home=current.tiles[attacker.home]?.owner===expansion.owner?attacker.home:expansion.launchIndex;
    const refund=expansion.captured?Math.floor(expansion.remaining*.8):Math.floor(expansion.sent*.7);
    if(refund>0&&home>=0){current.tiles[home]!.troops+=refund;changed=true;}
-   if(!expansion.captured&&expansion.owner==='human')report('🛡 The border front ran out of strength before taking land.');
+   if(!expansion.captured&&expansion.owner==='human')report('🛡 The attack front could not break through that territory.');
    else if(expansion.owner==='human')report('🌎 Border advance complete. '+expansion.captured+' tiles captured.');
    localExpansions.splice(e,1);finished=true;
   }
