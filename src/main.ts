@@ -763,7 +763,7 @@ function advanceLocalExpansions(){
    current.tiles[index]=tile;
    if(tile.terrain==='water'||tile.owner!==expansion.targetOwner)continue;
    const onBorder=neighborsLocal(index).some(next=>getGameTile(next).owner===expansion.owner);
-   if(!settlementSweep&&!onBorder)continue;
+   if(!onBorder)continue;
    const defensePost=(tile.buildings||[]).some(b=>b.type==='defense_post');
    const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
    const cost=candidate.pressure*(expansion.targetOwner?strength:1)+(expansion.targetOwner?tile.troops*.015:0)+(defensePost?.55:0);
