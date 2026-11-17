@@ -746,6 +746,7 @@ function localMarch(attackerId:string,targetIndex:number,percent:number,ownedInp
  if(!candidates.length){if(attackerId==='human')report('🛡 There is no connected land ahead of your border.');return 0;}
  const withdrawal=sent/totalTroops;
  for(const cell of owned)cell.tile.troops=Math.max(0,cell.tile.troops*(1-withdrawal));
+ attacker.troopsTotal=Math.max(0,totalTroops-sent);
  localExpansions.push({owner:attackerId,targetOwner,sent,remaining:sent,defenderTroops:targetTroops,frontWidth,launchIndex,candidates,cursor:0,captured:0});
  if(attackerId==='human')report('🌐 Connected border front advancing through '+(targetOwner?'enemy':'unclaimed')+' territory. The front shows its remaining troops.');
  return candidates.length;
@@ -761,7 +762,8 @@ function advanceLocalExpansions(){
   const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
   // Unclaimed settlement growth advances as a broad connected wave; contested land keeps its current progression.
   const settlementSweep=expansion.targetOwner===null;
-  const batch=settlementSweep?Math.min(expansion.candidates.length-expansion.cursor,Math.max(96,Math.min(288,Math.ceil(expansion.frontWidth*10)))):Math.max(2,Math.min(12,Math.ceil(expansion.frontWidth/(1+strength)*1.8)));
+  // Small, frequent steps make the frontier read as a continuous flow instead of a single large fill.
+  const batch=settlementSweep?Math.min(expansion.candidates.length-expansion.cursor,Math.max(6,Math.min(16,Math.ceil(expansion.frontWidth*.03)))):Math.max(3,Math.min(6,Math.ceil(expansion.frontWidth/(1+strength)*.8)));
   const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
   while(expansion.cursor<end){
    const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
@@ -779,12 +781,13 @@ function advanceLocalExpansions(){
    expansion.remaining-=cost;
    if(tile.owner){const previous=current.players.find(p=>p.id===tile.owner);if(previous)previous.score=Math.max(0,previous.score-1);}
    tile.owner=expansion.owner;tile.troops=Math.max(0,Math.floor(Math.min(1,expansion.remaining*.025)));
+   attacker.troopsTotal=Math.max(0,(attacker.troopsTotal||0)+tile.troops);
    attacker.score++;expansion.captured++;changed=true;
   }
   if(expansion.cursor>=expansion.candidates.length){
    const home=current.tiles[attacker.home]?.owner===expansion.owner?attacker.home:expansion.launchIndex;
    const refund=expansion.captured?Math.floor(expansion.remaining*.8):Math.floor(expansion.sent*.7);
-   if(refund>0&&home>=0){current.tiles[home]!.troops+=refund;changed=true;}
+   if(refund>0&&home>=0){current.tiles[home]!.troops+=refund;attacker.troopsTotal=Math.max(0,(attacker.troopsTotal||0)+refund);changed=true;}
    if(!expansion.captured&&expansion.owner==='human')report('🛡 The attack front could not break through that territory.');
    else if(expansion.owner==='human')report('🌎 Border advance complete. '+expansion.captured+' tiles captured.');
    localExpansions.splice(e,1);finished=true;
@@ -792,7 +795,7 @@ function advanceLocalExpansions(){
  }
  if(changed||finished){render();checkSoloWinner();}
 }
-setInterval(advanceLocalExpansions,125);
+setInterval(advanceLocalExpansions,60);
 const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80,highway:110};
 const buildingDetails:Record<BuildingType,{name:string;icon:string;description:string;placement:string}>={city:{name:'City',icon:'🏙️',description:'Raises your national troop capacity so your population can grow beyond what your land alone supports.',placement:'Build on owned land · Upgradeable to level 4'},factory:{name:'Factory',icon:'🏭',description:'Produces industrial income and acts as a hub for your growing road network.',placement:'Build on owned land · Upgradeable'},port:{name:'Port',icon:'⚓',description:'A coastal harbor that enables settlement ferries and creates trade connections between shores.',placement:'Must touch water · One per tile'},defense_post:{name:'Defense Post',icon:'🛡️',description:'A fortified outpost that makes its tile harder to capture.',placement:'Build on owned land · One per tile'},market:{name:'Market',icon:'🏪',description:'Generates extra gold income for your nation.',placement:'Build on owned land · Upgradeable'},farm:{name:'Farm',icon:'🌾',description:'Improves your nation’s passive troop recovery over time.',placement:'Build on owned land · Upgradeable'},highway:{name:'Highway',icon:'🛣️',description:'Connects nearby cities, factories, markets and other highway tiles. Each segment adds income, with a bonus when linked to a settlement or industry.',placement:'Build beside a City, Factory, Market or another Highway'}};
 function updateBuildingInfo(type:BuildingType){const info=buildingDetails[type],panel=el('building-info');panel.innerHTML='<div class="building-info-icon">'+info.icon+'</div><div class="building-info-copy"><b>'+info.name+'</b><p>'+info.description+'</p><small>'+info.placement+' · '+buildCosts[type]+' GOLD</small></div>';}
@@ -817,7 +820,19 @@ function localBuild(index:number,type:BuildingType){
  report(type.replace('_',' ').toUpperCase()+' constructed.');return true;
 }
 function tryBuild(index:number,type:BuildingType){if(mode==='single'){localBuild(index,type);render();}else if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'build',tile:index,building:type}));}
-function localRecruit(player:Player){if(!game||(!soloInfiniteGold&&player.gold<25))return;const home=game.tiles[player.home]||getGameTile(player.home);game.tiles[player.home]=home;if(home?.owner===player.id){if(!soloInfiniteGold)player.gold-=25;home.troops+=15;}}
+function localRecruit(player:Player){
+ if(!game)return;
+ const home=game.tiles[player.home]||getGameTile(player.home);game.tiles[player.home]=home;
+ if(home?.owner!==player.id)return;
+ let current=Number.isFinite(player.troopsTotal)?Math.max(0,player.troopsTotal||0):game.tiles.reduce((sum,tile)=>sum+(tile?.owner===player.id?tile.troops:0),0);
+ const cap=Number.isFinite(player.troopMax)?Math.max(0,player.troopMax||0):Math.floor(2*(Math.pow(Math.max(1,player.territory||1),.6)+50));
+ const room=soloInfiniteTroops&&player.id==='human'?15:Math.max(0,cap-current);
+ const amount=Math.min(15,room);
+ if(amount<=0){report('⚔ Your troop bar is full. Expand your capacity before recruiting more.');return;}
+ const cost=soloInfiniteGold?0:Math.ceil(25*amount/15);
+ if(player.gold<cost){report('🪙 You need '+cost+' gold to recruit.');return;}
+ player.gold-=cost;home.troops+=amount;player.troopsTotal=current+amount;
+}
 function botTurn(bot:Player,ownedInput?:number[]){
  if(!game)return false;
  const owned=(ownedInput||[]).filter(index=>game!.tiles[index]?.owner===bot.id);
@@ -974,7 +989,7 @@ function advanceLocalShips(){
   if(ship.step>=ship.path.length-1){
    if(ship.kind==='colony'){
     const tile=getGameTile(ship.to??pos);
-    if(tile.owner===null&&tile.terrain!=='water'&&tile.terrain!=='mountain'){tile.owner=ship.owner;tile.troops=1;game.tiles[ship.to??pos]=tile;const owner=game.players.find(p=>p.id===ship.owner);if(owner)owner.score++;if(ship.owner==='human')report('🏝 New island settlement established!');}
+    if(tile.owner===null&&tile.terrain!=='water'&&tile.terrain!=='mountain'){tile.owner=ship.owner;tile.troops=1;game.tiles[ship.to??pos]=tile;const owner=game.players.find(p=>p.id===ship.owner);if(owner){owner.score++;owner.troopsTotal=Math.max(0,(owner.troopsTotal||0)+1);}if(ship.owner==='human')report('🏝 New island settlement established!');}
    }else if(ship.kind==='trade'){
     const from=game.players.find(p=>p.id===ship.owner),to=ship.destinationOwner?game.players.find(p=>p.id===ship.destinationOwner):from;
     const payout=Math.min(250,Math.max(20,Math.floor(ship.path.length*.3)));if(from)from.gold+=payout;if(to&&to.id!==from?.id)to.gold+=payout;
@@ -1011,6 +1026,13 @@ function localTick(){
  for(const p of game.players){
   const stats=summary.get(p.id)!;
   const maxTroops=Math.floor(2*(Math.pow(Math.max(1,stats.land),.6)+50)+stats.cityLevels*250);
+  if(!(soloInfiniteTroops&&p.id==='human')&&stats.troops>maxTroops){
+   const overflowStart=stats.troops-maxTroops;let overflow=overflowStart;
+   const preferredHome=game.tiles[p.home]?.owner===p.id?p.home:-1;
+   if(preferredHome>=0){const tile=game.tiles[preferredHome]!;const removed=Math.min(overflow,tile.troops);tile.troops-=removed;overflow-=removed;}
+   for(const tileIndex of stats.owned){if(overflow<=0)break;if(tileIndex===preferredHome)continue;const tile=game.tiles[tileIndex]!;const removed=Math.min(overflow,tile.troops);if(removed>0){tile.troops-=removed;overflow-=removed;}}
+   stats.troops-=overflowStart-overflow;
+  }
   const bot=p.id.startsWith('bot-');
   const baseGoldPerSecond=bot ? 0.5 : 1;
   const troopRate=troopGrowthPerSecond(stats.troops,maxTroops,bot?.5:1)*(1+Math.min(12,stats.farms)*.10);
