@@ -369,7 +369,7 @@ function getGameTile(index:number):Tile{
 }
 function createWorldTiles(mapId:string,seed:number):{tiles:Tile[];playable:number}{
  const tiles=new Array<Tile>(WORLD_WIDTH*WORLD_HEIGHT);let playable=0;
- for(let i=0;i<WORLD_WIDTH*WORLD_HEIGHT;i++){const terrain=terrainAt(i%WORLD_WIDTH,Math.floor(i/WORLD_WIDTH),mapId,seed);if(terrain!=='water'&&terrain!=='mountain')playable++;}
+ for(let i=0;i<WORLD_WIDTH*WORLD_HEIGHT;i++){const terrain=terrainAt(i%WORLD_WIDTH,Math.floor(i/WORLD_WIDTH),mapId,seed);if(terrain!=='water')playable++;}
  return{tiles,playable};
 }
 function spawnBlobForMap(tiles:Tile[],center:number,mapId:string,seed:number):number[]|null{
@@ -410,6 +410,40 @@ function clearSpawnArea(tiles:Tile[],at:number,owner:string,playerColor:string,m
 }
 function playerColor(slot:number){return 'hsl('+((slot*137.508+195)%360).toFixed(1)+' 66% 58%)';}
 const BOT_NAMES=['Astra','Vex','Orion','Nova','Mako','Sable','Atlas','Echo','Rune','Nyx','Sol','Kestrel','Mira','Drift','Onyx','Lumen','Rook','Cinder','Aero','Quill','Zephyr','Iris','Juno','Comet','Flint','Argo','Talon','Lyra','Kairo','Ember','Pixel','Nori','Cobalt','Warden','Basil','Riven','Mistral','Sora','Piper','Tundra','Vega','Fable','Koda','Boreal','Axiom','Indigo','Marble','Skye','Tessera'];
+function getSpawnPlacementBlob(center:number):number[]|null{
+ if(!game||!Number.isInteger(center)||center<0||center>=game.width*game.height)return null;
+ const sx=center%game.width,sy=Math.floor(center/game.width),blob:number[]=[];
+ for(let y=Math.max(0,sy-4);y<=Math.min(game.height-1,sy+4);y++)for(let x=Math.max(0,sx-4);x<=Math.min(game.width-1,sx+4);x++){
+  const dx=x-(sx-.5),dy=y-(sy-.5);if(dx*dx+dy*dy>16)continue;
+  const index=y*game.width+x,tile=getGameTile(index);
+  if(tile.owner||tile.terrain==='water')return null;
+  blob.push(index);
+ }
+ if(blob.length<35)return null;
+ for(const player of game.players){
+  if(player.id===myId||player.home<0)continue;
+  const px=player.home%game.width,py=Math.floor(player.home/game.width);
+  if(Math.hypot(sx-px,sy-py)<22)return null;
+ }
+ return blob;
+}
+function placeLocalSpawn(center:number){
+ if(!game||mode!=='single'||!spawnPlacementActive)return false;
+ const blob=getSpawnPlacementBlob(center);
+ if(!blob){report('🧭 Choose an open land location with enough room for the complete starting blob.');draw();return false;}
+ const me=game.players.find(player=>player.id==='human');if(!me)return false;
+ for(const index of blob){
+  const tile=getGameTile(index);
+  game.tiles[index]={...tile,owner:'human',troops:index===center?36:0,buildings:[]};
+ }
+ me.home=center;me.territory=blob.length;me.troopsTotal=36;me.troopMax=Math.floor(2*(Math.pow(Math.max(1,blob.length),.6)+50));
+ spawnPlacementActive=false;soloPaused=false;selectedSource=-1;clearLandmassSelection();
+ el('spawn-placement-panel').classList.add('hidden');el('floating-dock').classList.remove('hidden');
+ (el('pause-solo') as HTMLButtonElement).textContent='Ⅱ PAUSE';
+ cameraX=center%game.width;cameraY=Math.floor(center/game.width);
+ report('🌎 Starting territory placed. Your campaign has begun. Expand from your border and build your nation.');
+ applyCamera();render();resetSoloTimer();return true;
+}
 function startSinglePlayer(){
  mode='single';if(socket){socket.close();socket=null;}if(localTimer)clearInterval(localTimer);
  localExpansions.length=0;clearLandmassSelection();selectedSource=-1;activeBuilding=null;matchWinner=null;soloPaused=true;soloSpeed=1;spawnPlacementActive=true;resetCamera();myId='human';
@@ -943,6 +977,13 @@ function draw(){
    ctx.restore();
   }
  }
+ if(spawnPlacementActive&&hoverTile>=0){
+  const valid=!!getSpawnPlacementBlob(hoverTile),x=(hoverTile%current.width-cameraX)*tilePx+cssW/2+tilePx/2;
+  const y=(Math.floor(hoverTile/current.width)-cameraY)*tilePx+cssH/2+tilePx/2,radius=4*tilePx;
+  ctx.save();ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.fillStyle=valid?'rgba(116,235,185,.13)':'rgba(255,112,105,.12)';ctx.fill();
+  ctx.strokeStyle=valid?'#8af4c9':'#ff8c81';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.shadowColor=valid?'#76edc1':'#ff7468';ctx.shadowBlur=12;ctx.stroke();ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(x,y,Math.max(3,tilePx*.45),0,Math.PI*2);ctx.fillStyle=valid?'#a8ffdc':'#ff9a90';ctx.fill();ctx.restore();
+ }
  const fronts:ExpansionFrontView[]=mode==='single'
   ?localExpansions.map(exp=>({owner:exp.owner,tile:exp.candidates[Math.min(exp.cursor,Math.max(0,exp.candidates.length-1))]?.index??exp.launchIndex,troops:Math.ceil(exp.remaining)}))
   :(current.expansions||[]);
@@ -1012,6 +1053,15 @@ canvas.addEventListener('click',event=>{
  if(!game)return;
  const index=tileAt(event);if(index<0)return;
  if(mode==='multi'&&!game.tiles[index]){requestChunkForTile(index);report('🗺 Loading this section of the map…');return;}
+ if(spawnPlacementActive){
+  if(mode==='single'){placeLocalSpawn(index);return;}
+  const me=game.players.find(player=>player.id===myId);
+  if(matchPhase!=='spawning'||!me||me.home>=0){report('Waiting for the spawn phase to finish.');return;}
+  if(!getSpawnPlacementBlob(index)){report('🧭 Choose open land with enough room for your starting blob.');return;}
+  if(socket?.readyState===WebSocket.OPEN){spawnPlacementActive=false;el('spawn-phase-title').textContent='PLACING YOUR TERRITORY…';el('spawn-phase-help').textContent='The server is checking the location.';socket.send(JSON.stringify({type:'spawn',tile:index}));}
+  return;
+ }
+ if(mode==='multi'&&matchPhase!=='playing'){report('The match is not open for actions yet.');return;}
  const tile=mode==='single'?getGameTile(index):game.tiles[index]!;
  if(tile.owner)selectLandmass(index);else clearLandmassSelection();
  draw();updateStats();
@@ -1068,7 +1118,7 @@ el('clear-selection').addEventListener('click',clearInteractionState);
 el('center-map').addEventListener('click',resetCamera);
 canvas.addEventListener('wheel',event=>{event.preventDefault();zoomCamera(event.deltaY<0?.12:-.12);},{passive:false});
 canvas.addEventListener('pointerdown',event=>{if(event.button!==1&&!(event.button===0&&event.shiftKey))return;event.preventDefault();cameraDragging=true;cameraPointer=event.pointerId;cameraStart={x:event.clientX,y:event.clientY,cx:cameraX,cy:cameraY};canvas.setPointerCapture(event.pointerId);});
-canvas.addEventListener('pointermove',event=>{if(cameraDragging&&cameraStart&&event.pointerId===cameraPointer){cameraX=cameraStart.cx-(event.clientX-cameraStart.x)/cameraZoom;cameraY=cameraStart.cy-(event.clientY-cameraStart.y)/cameraZoom;applyCamera();return;}if(selectedSource>=0){const next=tileAt(event);if(next!==hoverTile){hoverTile=next;draw();}}});
+canvas.addEventListener('pointermove',event=>{if(cameraDragging&&cameraStart&&event.pointerId===cameraPointer){cameraX=cameraStart.cx-(event.clientX-cameraStart.x)/cameraZoom;cameraY=cameraStart.cy-(event.clientY-cameraStart.y)/cameraZoom;applyCamera();return;}if(selectedSource>=0||spawnPlacementActive){const next=tileAt(event);if(next!==hoverTile){hoverTile=next;draw();}}});
 canvas.addEventListener('pointerup',event=>{if(event.pointerId===cameraPointer){cameraDragging=false;cameraStart=null;}});
 canvas.addEventListener('pointercancel',()=>{cameraDragging=false;cameraStart=null;});canvas.addEventListener('pointerleave',()=>{hoverTile=-1;if(selectedSource>=0)draw();});
 canvas.addEventListener('contextmenu',event=>{event.preventDefault();document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.tab==='build'));el('command-panel').classList.add('hidden');el('units-panel').classList.add('hidden');el('build-panel').classList.remove('hidden');});
