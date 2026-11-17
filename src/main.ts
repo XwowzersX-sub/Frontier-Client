@@ -715,7 +715,7 @@ function advanceLocalExpansions(){
   const expansion=localExpansions[e]!,attacker=current.players.find(p=>p.id===expansion.owner);
   if(!attacker){localExpansions.splice(e,1);continue;}
   const strength=expansion.targetOwner?Math.max(.6,Math.min(2,expansion.defenderTroops/Math.max(1,expansion.sent))):1;
-  const batch=Math.max(1,Math.min(5,Math.ceil(expansion.frontWidth/(1+strength))));
+  const batch=Math.max(2,Math.min(12,Math.ceil(expansion.frontWidth/(1+strength)*1.8)));
   const end=Math.min(expansion.candidates.length,expansion.cursor+batch);
   while(expansion.cursor<end){
    const candidate=expansion.candidates[expansion.cursor++]!,index=candidate.index,tile=current.tiles[index]||getGameTile(index);
@@ -746,10 +746,19 @@ function advanceLocalExpansions(){
  }
  if(changed||finished){render();checkSoloWinner();}
 }
-setInterval(advanceLocalExpansions,250);
+setInterval(advanceLocalExpansions,125);
 const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80,highway:110};
 const buildingDetails:Record<BuildingType,{name:string;icon:string;description:string;placement:string}>={city:{name:'City',icon:'🏙️',description:'Raises your national troop capacity so your population can grow beyond what your land alone supports.',placement:'Build on owned land · Upgradeable to level 4'},factory:{name:'Factory',icon:'🏭',description:'Produces industrial income and acts as a hub for your growing road network.',placement:'Build on owned land · Upgradeable'},port:{name:'Port',icon:'⚓',description:'A coastal harbor that enables settlement ferries and creates trade connections between shores.',placement:'Must touch water · One per tile'},defense_post:{name:'Defense Post',icon:'🛡️',description:'A fortified outpost that makes its tile harder to capture.',placement:'Build on owned land · One per tile'},market:{name:'Market',icon:'🏪',description:'Generates extra gold income for your nation.',placement:'Build on owned land · Upgradeable'},farm:{name:'Farm',icon:'🌾',description:'Improves your nation’s passive troop recovery over time.',placement:'Build on owned land · Upgradeable'},highway:{name:'Highway',icon:'🛣️',description:'Connects nearby cities, factories, markets and other highway tiles. Each segment adds income, with a bonus when linked to a settlement or industry.',placement:'Build beside a City, Factory, Market or another Highway'}};
 function updateBuildingInfo(type:BuildingType){const info=buildingDetails[type],panel=el('building-info');panel.innerHTML='<div class="building-info-icon">'+info.icon+'</div><div class="building-info-copy"><b>'+info.name+'</b><p>'+info.description+'</p><small>'+info.placement+' · '+buildCosts[type]+' GOLD</small></div>';}
+const BUILDING_MAP_VISUALS:Record<BuildingType,{icon:string;glow:string;border:string}>={
+ city:{icon:'🏙️',glow:'#75dfff',border:'#a7edff'},
+ factory:{icon:'🏭',glow:'#ffb76e',border:'#ffe0ad'},
+ port:{icon:'⚓',glow:'#63dff5',border:'#b5f5ff'},
+ defense_post:{icon:'🛡️',glow:'#ff8292',border:'#ffc0c8'},
+ market:{icon:'🏪',glow:'#f5d477',border:'#ffefb0'},
+ farm:{icon:'🌾',glow:'#9bea86',border:'#d6ffc1'},
+ highway:{icon:'🛣️',glow:'#8bbcff',border:'#d3e5ff'}
+};
 function localBuild(index:number,type:BuildingType){
  if(!game)return false;const tile=game.tiles[index]||getGameTile(index),me=game.players.find(p=>p.id===myId);game.tiles[index]=tile;if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
  tile.buildings=tile.buildings||[];const existing=tile.buildings.filter(b=>b.type===type);
@@ -1038,6 +1047,35 @@ function draw(){
   }catch(error){console.error('GPU world rendering failed:',error);report('GPU renderer error: '+(error instanceof Error?error.message:'unknown error'));worldRenderer=null;}
  }
  const tilePx=cameraZoom;
+ // Smooth, full-colour building emblems are drawn on the high-DPI overlay canvas.
+ // This keeps the world terrain detailed while making structures read like the build dock.
+ if(cameraZoom>=5.5){
+  const left=Math.max(0,Math.floor(cameraX-cssW/(2*tilePx))-1);
+  const top=Math.max(0,Math.floor(cameraY-cssH/(2*tilePx))-1);
+  const right=Math.min(current.width-1,Math.ceil(cameraX+cssW/(2*tilePx))+1);
+  const bottom=Math.min(current.height-1,Math.ceil(cameraY+cssH/(2*tilePx))+1);
+  ctx.imageSmoothingEnabled=true;
+  for(let wy=top;wy<=bottom;wy++)for(let wx=left;wx<=right;wx++){
+   const index=wy*current.width+wx,tile=current.tiles[index];
+   if(!tile?.owner||!tile.buildings?.length)continue;
+   const building=tile.buildings.find(value=>value.type!=='highway')||tile.buildings[0]!;
+   const visual=BUILDING_MAP_VISUALS[building.type];
+   if(!visual)continue;
+   const x=(wx-cameraX)*tilePx+cssW/2+tilePx/2;
+   const y=(wy-cameraY)*tilePx+cssH/2+tilePx/2;
+   if(x<-40||y<-40||x>cssW+40||y>cssH+40)continue;
+   const size=Math.max(16,Math.min(38,tilePx*1.55)),half=size/2;
+   ctx.save();
+   ctx.shadowColor=visual.glow;ctx.shadowBlur=Math.min(15,size*.46);
+   ctx.fillStyle='rgba(5,18,29,.91)';ctx.strokeStyle=visual.border;ctx.lineWidth=1.15;
+   ctx.beginPath();ctx.roundRect(x-half,y-half,size,size,Math.max(4,size*.23));ctx.fill();ctx.stroke();
+   ctx.shadowColor=visual.glow;ctx.shadowBlur=Math.min(10,size*.34);
+   ctx.font='normal '+Math.round(size*.72)+'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+   ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';
+   ctx.fillText(visual.icon,x,y+.5);
+   ctx.restore();
+  }
+ }
  if(current.ships)for(const ship of current.ships){
   let sx=ship.x,sy=ship.y;
   if(ship.path?.length){const at=ship.path[Math.min(ship.step||0,ship.path.length-1)]!;sx=at%current.width;sy=Math.floor(at/current.width);}
