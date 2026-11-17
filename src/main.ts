@@ -449,21 +449,57 @@ function areAllies(attackerId:string,ownerId:string|null){
  const attacker=game.players.find(p=>p.id===attackerId),defender=game.players.find(p=>p.id===ownerId);
  return !!attacker&&!!defender&&attacker.team===defender.team;
 }
-function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,percent:number){
- if(!game)return 0;
- const source=game.tiles[sourceIndex]||getGameTile(sourceIndex),target=game.tiles[targetIndex]||getGameTile(targetIndex),attacker=game.players.find(p=>p.id===attackerId);
- game.tiles[sourceIndex]=source;game.tiles[targetIndex]=target;
- if(!source||!target||!attacker||source.owner!==attackerId||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
- const sx=sourceIndex%game.width,sy=Math.floor(sourceIndex/game.width),tx=targetIndex%game.width,ty=Math.floor(targetIndex/game.width);
- const dx=tx-sx,dy=ty-sy,distance=Math.hypot(dx,dy);
- if(distance>MAX_MARCH_DISTANCE){if(attackerId==='human')report('That destination is too far. Choose a closer frontier (up to '+MAX_MARCH_DISTANCE+' tiles).');return 0;}
+function localMarch(attackerId:string,targetIndex:number,percent:number){
+ if(!game||targetIndex<0||targetIndex>=game.width*game.height)return 0;
+ const target=game.tiles[targetIndex]||getGameTile(targetIndex),attacker=game.players.find(p=>p.id===attackerId);
+ if(!attacker||!target||target.owner===attackerId||target.terrain==='water'||target.terrain==='mountain')return 0;
  if(areAllies(attackerId,target.owner)){if(attackerId==='human')report('🤝 That territory belongs to an ally.');return 0;}
- const sent=Math.floor(source.troops*Math.max(1,Math.min(100,percent))/100);
- if(sent<1){if(attackerId==='human')report('⚔ Not enough troops in the selected territory.');return 0;}
- source.troops-=sent;
- const dirX=dx/(distance||1),dirY=dy/(distance||1);
- const radius=Math.min(MAX_MARCH_DISTANCE,Math.max(3,2.2+Math.sqrt(sent)*.38));
- const extent=Math.ceil(radius*1.45),fieldSeed=(game.mapSeed||1)+sourceIndex*17+targetIndex*31+sent*13;
+
+ const owned:{index:number;x:number;y:number;tile:Tile}[]=[];
+ let totalTroops=0,centerX=0,centerY=0;
+ game.tiles.forEach((tile,index)=>{
+  if(!tile||tile.owner!==attackerId)return;
+  const x=index%game.width,y=Math.floor(index/game.width);
+  owned.push({index,x,y,tile});totalTroops+=tile.troops;centerX+=x;centerY+=y;
+ });
+ if(!owned.length||totalTroops<1){if(attackerId==='human')report('⚔ Your nation has no available troops.');return 0;}
+ centerX/=owned.length;centerY/=owned.length;
+ const tx=targetIndex%game.width,ty=Math.floor(targetIndex/game.width);
+ let dirX=tx-centerX,dirY=ty-centerY,distance=Math.hypot(dirX,dirY);
+ if(distance<0.001&&attacker.home>=0){
+  dirX=(attacker.home%game.width)-centerX;dirY=Math.floor(attacker.home/game.width)-centerY;distance=Math.hypot(dirX,dirY);
+ }
+ if(distance<0.001){dirX=1;dirY=0;distance=1;}
+ dirX/=distance;dirY/=distance;
+
+ // Pick the outer edge facing the clicked direction; no source tile is selected.
+ let launchIndex=-1,bestScore=-Infinity;
+ for(const cell of owned){
+  const border=neighborsLocal(cell.index).some(next=>{
+   const t=getGameTile(next);
+   return t.owner!==attackerId&&t.terrain!=='water'&&t.terrain!=='mountain';
+  });
+  if(!border)continue;
+  const rx=cell.x-centerX,ry=cell.y-centerY;
+  const forward=rx*dirX+ry*dirY,lateral=Math.abs(rx*dirY-ry*dirX);
+  const targetDistance=Math.hypot(tx-cell.x,ty-cell.y);
+  const score=forward-lateral*.32-targetDistance*.015;
+  if(score>bestScore){bestScore=score;launchIndex=cell.index;}
+ }
+ if(launchIndex<0){
+  let nearest=Infinity;
+  for(const cell of owned){const d=Math.hypot(tx-cell.x,ty-cell.y);if(d<nearest){nearest=d;launchIndex=cell.index;}}
+ }
+ const sx=launchIndex%game.width,sy=Math.floor(launchIndex/game.width);
+ const sent=Math.floor(totalTroops*Math.max(1,Math.min(100,percent))/100);
+ if(sent<1){if(attackerId==='human')report('⚔ Not enough troops available.');return 0;}
+
+ // The selected percentage is withdrawn proportionally from the whole nation.
+ const withdrawal=sent/totalTroops;
+ for(const cell of owned)cell.tile.troops=Math.max(0,cell.tile.troops*(1-withdrawal));
+
+ const radius=Math.min(18,Math.max(2.5,1.7+Math.sqrt(sent)*.28));
+ const extent=Math.ceil(radius*1.45),fieldSeed=(game.mapSeed||1)+launchIndex*17+targetIndex*31+sent*13;
  const minX=Math.max(0,sx-extent),maxX=Math.min(game.width-1,sx+extent);
  const minY=Math.max(0,sy-extent),maxY=Math.min(game.height-1,sy+extent);
  const candidates:{index:number;edge:number;pressure:number}[]=[];
@@ -491,10 +527,15 @@ function localMarch(attackerId:string,sourceIndex:number,targetIndex:number,perc
   tile.owner=attackerId;tile.troops=Math.max(0,Math.floor(candidate.pressure-required));game.tiles[index]=tile;
   attacker.score++;captured++;
  }
- if(attackerId==='human')report(captured?'🌐 Your expansion front spread as a broad, direction-biased field, capturing '+captured+' land tiles. Pressure faded toward the edge.':'🛡 The expansion field weakened before it could capture land.');
+ if(!captured){
+  const refund=Math.floor(sent*.7),home=game.tiles[attacker.home]?.owner===attackerId?attacker.home:launchIndex;
+  if(home>=0)game.tiles[home]!.troops+=refund;
+ }
+ if(attackerId==='human')report(captured?'🌐 Expansion launched from your outer border. '+captured+' land tiles captured using '+percent+'% of national troops.':'🛡 The clicked direction had no reachable land; most of the committed force returned.');
  return captured;
 }
-function localClaim(sourceIndex:number,targetIndex:number,percent:number){return localMarch('human',sourceIndex,targetIndex,percent)>0;}
+function localClaim(targetIndex:number,percent:number){return localMarch('human',targetIndex,percent)>0;}
+
 const buildCosts:Record<BuildingType,number>={city:100,factory:150,port:120,defense_post:80,market:130,farm:80};
 function localBuild(index:number,type:BuildingType){
  if(!game)return false;const tile=game.tiles[index]||getGameTile(index),me=game.players.find(p=>p.id===myId);game.tiles[index]=tile;if(!tile||!me||tile.owner!==myId||tile.terrain==='water'||tile.terrain==='mountain'){report('Build on one of your own land territories.');return false;}
