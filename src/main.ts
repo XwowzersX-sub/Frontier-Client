@@ -197,6 +197,76 @@ const WORLD_MAPS=[
 const SPAWN_POINTS:Record<string,[number,number]>={northwest:[.16,.16],north:[.5,.12],northeast:[.84,.16],west:[.12,.5],center:[.5,.5],east:[.88,.5],southwest:[.16,.84],south:[.5,.88],southeast:[.84,.84]};
 function mapTitle(id:string){return WORLD_MAPS.find(m=>m.id===id)?.name||'Random World';}
 function mapIdFromTitle(name:string){return WORLD_MAPS.find(m=>m.name.toLowerCase()===String(name).toLowerCase())?.id||String(name||'continents').toLowerCase().replace(/[^a-z]+/g,'-');}
+let lastLobbyPreviewSeed=-1;
+function drawLobbyMapPreview(){
+ const current=game;if(!current)return;
+ const preview=el('lobby-map-preview') as HTMLCanvasElement,context=preview.getContext('2d');if(!context)return;
+ const w=300,h=180,mapId=mapIdFromTitle(current.mapName||'continents'),seed=current.mapSeed||1;
+ const image=context.createImageData(w,h),data=image.data;
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  const wx=Math.min(current.width-1,Math.floor((x+.5)*current.width/w)),wy=Math.min(current.height-1,Math.floor((y+.5)*current.height/h));
+  const terrain=terrainAt(wx,wy,mapId,seed),p=(y*w+x)*4;
+  if(terrain==='water'){data[p]=14;data[p+1]=54;data[p+2]=75;}
+  else if(terrain==='mountain'){data[p]=105;data[p+1]=115;data[p+2]=117;}
+  else if(terrain==='forest'){data[p]=45;data[p+1]=91;data[p+2]=64;}
+  else{data[p]=106;data[p+1]=139;data[p+2]=82;}
+  data[p+3]=255;
+ }
+ context.putImageData(image,0,0);context.imageSmoothingEnabled=false;
+ context.save();context.scale(2,2);
+ for(const player of current.players){
+  if(player.home<0)continue;
+  const x=(player.home%current.width)/current.width*w,y=Math.floor(player.home/current.width)/current.height*h;
+  context.fillStyle=player.color;context.strokeStyle='#f4f4e8';context.lineWidth=1;context.beginPath();context.arc(x,y,3,0,Math.PI*2);context.fill();context.stroke();
+ }
+ context.restore();lastLobbyPreviewSeed=seed;
+}
+function updateLobbyScreen(){
+ const current=game;if(!current)return;
+ const seed=current.mapSeed||1;
+ el('lobby-map-name').textContent=(current.mapName||'RANDOM WORLD').toUpperCase();
+ el('lobby-player-count').textContent=current.players.length+'/'+(current.capacity||50);
+ el('lobby-player-list').innerHTML=current.players.length?current.players.map(player=>'<div class="lobby-player-row"><i style="background:'+escapeHtml(player.color)+'"></i><span>'+escapeHtml(player.name)+'</span><small>'+(player.home>=0?'PLACED':'WAITING')+'</small></div>').join(''):'<div class="lobby-empty">Waiting for commanders to join…</div>';
+ el('lobby-network-status').textContent='CONNECTED TO WORLD';
+ el('lobby-network-dot').classList.add('good');
+ el('lobby-phase-label').textContent='WAITING FOR THE WORLD TO OPEN';
+ if(lastLobbyPreviewSeed!==seed)drawLobbyMapPreview();
+ updateLobbyCountdown();
+}
+function updateLobbyCountdown(){
+ if(matchPhase!=='countdown')return;
+ const remaining=Math.max(0,Math.ceil((countdownEndsAt-(Date.now()+serverClockOffset))/1000));
+ el('lobby-countdown-value').textContent=String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0');
+}
+function updateSpawnPhasePanel(){
+ if(mode!=='multi'||!game)return;
+ const me=game.players.find(player=>player.id===myId);
+ const isWaiting=matchPhase==='spawning';
+ el('spawn-placement-panel').classList.toggle('hidden',!isWaiting);
+ if(isWaiting){
+  const canPlace=!!me&&me.home<0;
+  spawnPlacementActive=canPlace;
+  el('spawn-phase-title').textContent=canPlace?'CHOOSE YOUR STARTING TERRITORY':'YOUR TERRITORY IS PLACED';
+  el('spawn-phase-help').textContent=canPlace?'Click an open land area to place your radius-4 starting blob. Choose a clear region away from other commanders.':'Your starting territory is locked. Waiting for the other commanders to choose their locations…';
+  el('spawn-phase-roster').innerHTML=game.players.map(player=>'<div class="spawn-roster-item"><i style="background:'+escapeHtml(player.color)+'"></i>'+escapeHtml(player.name)+'<small>'+(player.home>=0?'READY':'CHOOSING')+'</small></div>').join('');
+  el('floating-dock').classList.add('hidden');
+  showScreen('game');
+ }else if(matchPhase==='playing'){
+  spawnPlacementActive=false;
+  el('floating-dock').classList.remove('hidden');
+  el('spawn-placement-panel').classList.add('hidden');
+  showScreen('game');
+ }
+}
+function syncMultiplayerPhase(incoming:GameState){
+ matchPhase=incoming.phase||'playing';
+ countdownEndsAt=Number(incoming.countdownEndsAt)||0;spawnEndsAt=Number(incoming.spawnEndsAt)||0;
+ if(Number.isFinite(incoming.serverTime))serverClockOffset=Number(incoming.serverTime)-Date.now();
+ if(matchPhase==='countdown'){
+  spawnPlacementActive=false;el('spawn-placement-panel').classList.add('hidden');
+  showScreen('lobby');updateLobbyScreen();
+ }else updateSpawnPhasePanel();
+}
 function handleNetworkState(incoming:GameState){
  if(!incoming||!Number.isInteger(incoming.width)||!Number.isInteger(incoming.height))return;
  const newWorld=!game||game.width!==incoming.width||game.height!==incoming.height||game.mapSeed!==incoming.mapSeed;
@@ -210,7 +280,8 @@ function handleNetworkState(incoming:GameState){
   game.players=incoming.players;game.tick=incoming.tick;game.round=incoming.round;game.mapName=incoming.mapName;game.mapSeed=incoming.mapSeed;game.playable=incoming.playable;game.capacity=incoming.capacity;game.ships=incoming.ships||[];game.expansions=incoming.expansions||[];
   for(const [index,tile] of incoming.updates||[])if(index>=0&&index<game.tiles.length)game.tiles[index]=tile;
  }
- setConnection('ONLINE',true);draw();requestChunksForView();updateStats();
+ if(game){game.phase=incoming.phase||'playing';game.countdownEndsAt=incoming.countdownEndsAt;game.spawnEndsAt=incoming.spawnEndsAt;game.serverTime=incoming.serverTime;game.expansions=incoming.expansions||[];}
+ setConnection('ONLINE',true);syncMultiplayerPhase(incoming);draw();if(matchPhase!=='countdown')requestChunksForView();updateStats();
 }
 function handleNetworkChunk(packet:any){
  if(!game||!Array.isArray(packet.items)||Number(packet.mapSeed)!==Number(game.mapSeed))return;
