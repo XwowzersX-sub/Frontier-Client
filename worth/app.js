@@ -475,7 +475,7 @@ function handleServerMessage(msg){
     state.completedMatches++;grantContractProgress('matches',1);persistProgress();
     $('result-title').textContent=msg.winner==='self'?'YOU WON.':'GOOD MATCH.';
     $('result-copy').textContent=msg.winner==='self'?'Match win · 350 credits awarded.':'Match complete · 100 credits awarded.';
-    $('result-banner').hidden=false;state.socket?.close();$('zone-hud').hidden=true;state.screen='lobby';buildWorld('lobby',state.map);
+    $('result-banner').hidden=false;state.roomId=null;$('zone-hud').hidden=true;state.screen='lobby';buildWorld('lobby',state.map);
   }
   if(msg.type==='creditsAwarded'){state.credits=Number(msg.totalCredits)||state.credits;$('credits').textContent=state.credits;persistProgress();}
   if(msg.type==='notice')toast(msg.message||'MATCH UPDATE');
