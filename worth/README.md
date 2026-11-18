@@ -22,11 +22,14 @@ From the `worth/` directory run `python3 -m http.server 8000`, then open `http:/
 
 ## Controls
 - WASD: move
-- Mouse: camera
+- Mouse: rotate the third-person shoulder camera
+- Hold right mouse button: switch to the first-person view mounted on the helmet camera; the whole match slows to 38% speed while focus is held
 - Space: jump; also cancels a roll
 - Ctrl while still: crouch and move more slowly
 - Ctrl while moving: forward roll with a speed boost
 - E: interact with the contract board or a PvP pad
 - Esc: release mouse capture
+
+The player model now has animated arm and leg movement, idle breathing, jump/fall poses, landing compression, and a roll pose. The helmet camera is cosmetic equipment and provides a non-combat focus view.
 
 This is an early playable foundation, not a finished Unity game or full production matchmaking release.
