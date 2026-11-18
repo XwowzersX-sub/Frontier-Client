@@ -341,7 +341,7 @@ function updateCamera(dt){
   const right=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
   if(aiming){
     // The viewpoint is placed just in front of the head-mounted camera lens.
-    const lensPosition=player.localToWorld(new THREE.Vector3(0,1.80,-.43));
+    const lensPosition=player.userData.cameraAnchor.getWorldPosition(new THREE.Vector3());
     const sway=Math.sin((player.userData.animTime||0)*1.5)*.006;
     lensPosition.y+=sway;
     const cp=Math.cos(pitch),sp=Math.sin(pitch);
@@ -575,7 +575,7 @@ function handleServerMessage(msg){
     $('zone-hud').hidden=false;state.screen='online';buildWorld('practice',msg.map||state.map);$('world-name').textContent=msg.map.toUpperCase();toast('MATCH FOUND · FIRST TO 5 ROUNDS');return;
   }
   if(msg.type==='snapshot'){
-    state.serverTimeScale=Number(msg.timeScale)===0.38?.38:1;
+    state.serverTimeScale=Number(msg.timeScale)===0.38 ? 0.38 : 1;
     if(msg.map&&msg.map!==state.map){state.map=msg.map;buildWorld('practice',state.map);}
     updateRemotePlayers(msg.players||[]);
     if(msg.score){state.scoreA=msg.score.self||0;state.scoreB=msg.score.opponent||0;}
