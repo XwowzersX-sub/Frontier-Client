@@ -32,6 +32,8 @@
   </header>
 
   <div class="crosshair"><i></i><i></i></div>
+  <div class="aim-reticle" id="aim-reticle" hidden><span></span></div>
+  <div class="aim-status" id="aim-status" hidden>HEAD CAM FOCUS · MATCH TIME 38%</div>
   <div class="hud-left" id="world-hud">
     <div class="eyebrow">WORTH TRAINING GROUNDS</div>
     <div class="world-title" id="world-name">THE ATRIUM</div>
@@ -45,7 +47,7 @@
   </div>
   <div class="interact-prompt" id="interact-prompt" hidden><kbd>E</kbd><span id="interact-text">INTERACT</span></div>
   <div class="bottom-hints" id="bottom-hints">
-    <span><kbd>W A S D</kbd> MOVE</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>CTRL</kbd> CROUCH / ROLL</span><span><kbd>E</kbd> INTERACT</span><span><kbd>ESC</kbd> RELEASE MOUSE</span>
+    <span><kbd>W A S D</kbd> MOVE</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>CTRL</kbd> CROUCH / ROLL</span><span><kbd>RMB</kbd> HEAD CAM FOCUS</span><span><kbd>E</kbd> INTERACT</span><span><kbd>ESC</kbd> RELEASE MOUSE</span>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -82,7 +84,7 @@
       <button class="close-btn" data-close="settings-modal">×</button>
       <div class="eyebrow">PREFERENCES</div><h2>SETTINGS</h2>
       <div class="setting-row"><div><b>Mouse sensitivity</b><small>Camera look speed</small></div><input id="sensitivity" type="range" min="0.3" max="2" step="0.1" value="1"></div>
-      <div class="setting-row"><div><b>Camera distance</b><small>Third-person view</small></div><input id="camera-distance" type="range" min="4" max="10" step="0.5" value="6.5"></div>
+      <div class="setting-row"><div><b>Camera distance</b><small>Third-person view</small></div><input id="camera-distance" type="range" min="4" max="10" step="0.5" value="5.2"></div>
       <div class="setting-row"><div><b>Show control hints</b><small>On-screen movement guide</small></div><input id="hints-toggle" type="checkbox" checked></div>
       <div class="setting-row"><div><b>Reduced motion</b><small>Less camera shake and visual movement</small></div><input id="reduced-motion" type="checkbox"></div>
     </div>
