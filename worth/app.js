@@ -24,7 +24,7 @@ const state = {
   session:null, user:null, loadout:{movement:GEAR.movement[0],utility:GEAR.utility[0],support:GEAR.support[0],style:GEAR.style[0]},
   upgrades:{moveSpeed:0,jump:0,stamina:0,recharge:0,zoneControl:0}, upgradePoints:0,
   contracts:Object.fromEntries(CONTRACTS.map(c=>[c.id,{progress:0,claimed:false}])),
-  socket:null, queued:false, roomId:null, local:false, playerId:'guest',
+  socket:null, queued:false, roomId:null, local:false, playerId:'guest', serverTimeScale:1,
   scoreA:0,scoreB:0, roundWinsA:0,roundWinsB:0, scoreTimer:0,
   checkpointCount:0, zoneSeconds:0, matchStart:0, completedMatches:0, nextCheckpoint:0
 };
@@ -571,10 +571,11 @@ function cancelQueue(){state.queued=false;state.socket?.close();state.socket=nul
 function handleServerMessage(msg){
   if(msg.type==='queued'){$('match-status').textContent='Queued · '+msg.position+' player(s) ahead';return;}
   if(msg.type==='matchFound'){
-    state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
+    state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.serverTimeScale=1;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
     $('zone-hud').hidden=false;state.screen='online';buildWorld('practice',msg.map||state.map);$('world-name').textContent=msg.map.toUpperCase();toast('MATCH FOUND · FIRST TO 5 ROUNDS');return;
   }
   if(msg.type==='snapshot'){
+    state.serverTimeScale=Number(msg.timeScale)===0.38?.38:1;
     if(msg.map&&msg.map!==state.map){state.map=msg.map;buildWorld('practice',state.map);}
     updateRemotePlayers(msg.players||[]);
     if(msg.score){state.scoreA=msg.score.self||0;state.scoreB=msg.score.opponent||0;}
@@ -586,11 +587,11 @@ function handleServerMessage(msg){
     state.completedMatches++;grantContractProgress('matches',1);persistProgress();
     $('result-title').textContent=msg.winner==='self'?'YOU WON.':'GOOD MATCH.';
     $('result-copy').textContent=msg.winner==='self'?'Match win · 350 credits awarded.':'Match complete · 100 credits awarded.';
-    $('result-banner').hidden=false;state.roomId=null;$('zone-hud').hidden=true;state.screen='lobby';buildWorld('lobby',state.map);
+    $('result-banner').hidden=false;state.roomId=null;state.serverTimeScale=1;$('zone-hud').hidden=true;state.screen='lobby';buildWorld('lobby',state.map);
   }
   if(msg.type==='creditsAwarded'){state.credits=Number(msg.totalCredits)||state.credits;$('credits').textContent=state.credits;persistProgress();}
   if(msg.type==='notice')toast(msg.message||'MATCH UPDATE');
-  if(msg.type==='backToLobby'){state.screen='lobby';buildWorld('lobby',state.map);$('zone-hud').hidden=true;}
+  if(msg.type==='backToLobby'){state.screen='lobby';state.serverTimeScale=1;buildWorld('lobby',state.map);$('zone-hud').hidden=true;}
   if(msg.type==='error')toast(msg.message||'SERVER ERROR');
 }
 function updateRemotePlayers(players){
@@ -630,7 +631,8 @@ function animateRemotePlayers(realDt,simDt){
 }
 function animate(){
   const realDt=Math.min(clock.getDelta(),.04);
-  const simDt=realDt*(aiming?.38:1);
+  const activeTimeScale=state.roomId?(aiming?.38:state.serverTimeScale):(aiming?.38:1);
+  const simDt=realDt*activeTimeScale;
   updatePlayer(simDt);
   updateCamera(realDt);
   if(zoneRing)zoneRing.rotation.z+=simDt*.24;
