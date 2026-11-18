@@ -22,3 +22,17 @@
 @media(max-width:420px){.credits{margin-right:2px}.small-btn{padding:7px 6px;font-size:7px}.brand{gap:6px;letter-spacing:2px}.brand-mark{width:25px;height:25px}.modal-actions{flex-direction:column}.mode-btn{font-size:15px}.map-list{grid-template-columns:1fr 1fr}.match-footer{align-items:stretch;flex-direction:column}.match-footer .primary-btn{width:100%}}
 
 .contract-progress{font-size:8px;color:#94a6c5;margin-top:8px;letter-spacing:.7px}.contract button:disabled{opacity:.45;cursor:default}.gear-row select{max-width:65%;background:#0a1427;border:1px solid rgba(91,215,230,.28);color:#c9faff;padding:5px 7px;font:inherit;font-size:9px;outline:none}.gear-row select:focus{border-color:var(--cyan)}.fatal{display:grid;place-items:center;height:100vh;color:#d7e6ff;font:600 14px 'DM Sans',sans-serif;padding:30px;text-align:center}.reduced-motion *{animation-duration:.01ms!important;transition-duration:.01ms!important;}
+/* Head-mounted focus camera / cinematic aim state */
+.aim-reticle{position:fixed;z-index:4;left:50%;top:50%;width:32px;height:32px;transform:translate(-50%,-50%);pointer-events:none}
+.aim-reticle:before{content:'';position:absolute;inset:1px;border:1px solid rgba(180,250,255,.9);border-radius:50%;box-shadow:0 0 18px rgba(77,221,235,.5),inset 0 0 10px rgba(77,221,235,.16)}
+.aim-reticle:after{content:'';position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:50%;background:#eaffff;transform:translate(-50%,-50%);box-shadow:0 0 9px #58e7f1}
+.aim-reticle span:before,.aim-reticle span:after{content:'';position:absolute;background:rgba(180,250,255,.7)}
+.aim-reticle span:before{width:1px;height:7px;left:15px;top:-7px}
+.aim-reticle span:after{width:1px;height:7px;left:15px;bottom:-7px}
+.aim-status{position:fixed;z-index:4;left:50%;top:calc(50% + 34px);transform:translateX(-50%);padding:6px 10px;background:rgba(5,13,29,.72);border:1px solid rgba(99,224,236,.28);color:#bdfbff;font-size:8px;font-weight:800;letter-spacing:1.5px;white-space:nowrap;pointer-events:none}
+body.aiming .crosshair{opacity:0}
+body.aiming .vignette{background:radial-gradient(ellipse at 50% 48%,transparent 23%,rgba(2,7,18,.48) 100%),linear-gradient(180deg,rgba(3,8,20,.16),transparent 25%,transparent 72%,rgba(3,8,20,.35))}
+body.aiming #world canvas{filter:saturate(1.06) contrast(1.035)}
+body.aiming .aim-reticle:before{animation:focusPulse 1.6s ease-in-out infinite alternate}
+@keyframes focusPulse{from{transform:scale(.94);opacity:.72}to{transform:scale(1.06);opacity:1}}
+@media(max-width:800px){.aim-status{top:calc(50% + 27px);font-size:7px}}
