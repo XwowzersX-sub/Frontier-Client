@@ -185,13 +185,13 @@ function animateCharacter(model,dt,moving,isRolling,isCrouching,inAir,landPulse=
     arm.rotation.x=-gait*stride*.55*side-airborne*.72+roll*(index===0?-.55:.55);
     arm.rotation.z=side*(.12+crouch*.3+airborne*.1);
   });
-  rig.bodyPivot.rotation.x=(moving?.055:0)+airborne*.06+roll*-.32+crouch*.18;
+  rig.bodyPivot.rotation.x=(moving ? .055 : 0)+airborne*.06+roll*-.32+crouch*.18;
   rig.bodyPivot.position.y=1.02+Math.sin(phase*2)*.025*(moving?1:.45)-landPulse*.34;
   rig.bodyPivot.scale.set(1,1-landPulse*.16,1);
   rig.headPivot.rotation.x=airborne*-.06+roll*.08;
   rig.headPivot.rotation.z=Math.sin(phase*.5)*.025;
-  rig.ring.scale.setScalar(1+(moving?.045:0)+(roll?.12:0));
-  if(rig.body.material)rig.body.material.emissiveIntensity=isRolling?.65:(moving?.3:.2);
+  rig.ring.scale.setScalar(1+(moving ? .045 : 0)+(roll ? .12 : 0));
+  if(rig.body.material)rig.body.material.emissiveIntensity=isRolling ? .65 : (moving ? .3 : .2);
 }
 function clearGroup(group){while(group.children.length){const o=group.children.pop();o.parent=null;}}
 function buildWorld(kind='lobby',mapName=MAPS[0]){
@@ -326,7 +326,7 @@ function updatePlayer(dt){
   if(player.position.y<0){player.position.y=0;velocity.y=0;onGround=true;}
   if(!wasGrounded&&onGround&&velocity.y===0)landingPulse=.18;
   player.rotation.y=yaw;
-  player.scale.y=THREE.MathUtils.lerp(player.scale.y,crouching?.9:1,Math.min(1,dt*12));
+  player.scale.y=THREE.MathUtils.lerp(player.scale.y,crouching ? .9 : 1,Math.min(1,dt*12));
   if(rolling){
     const progress=1-Math.max(0,rollTime)/.78;
     player.rotation.z=Math.sin(progress*Math.PI)*.48;
