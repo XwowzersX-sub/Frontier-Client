@@ -24,9 +24,9 @@ const state = {
   session:null, user:null, loadout:{movement:GEAR.movement[0],utility:GEAR.utility[0],support:GEAR.support[0],style:GEAR.style[0]},
   upgrades:{moveSpeed:0,jump:0,stamina:0,recharge:0,zoneControl:0}, upgradePoints:0,
   contracts:Object.fromEntries(CONTRACTS.map(c=>[c.id,{progress:0,claimed:false}])),
-  socket:null, queued:false, roomId:null, local:false, playerId:'local',
+  socket:null, queued:false, roomId:null, local:false, playerId:'guest',
   scoreA:0,scoreB:0, roundWinsA:0,roundWinsB:0, scoreTimer:0,
-  checkpointCount:0, zoneSeconds:0, matchStart:0, completedMatches:0
+  checkpointCount:0, zoneSeconds:0, matchStart:0, completedMatches:0, nextCheckpoint:0
 };
 const keys = new Set();
 let renderer,scene,camera,clock,player,playerModel,worldGroup,zoneGroup;
@@ -421,14 +421,14 @@ async function loadProgress(){
     state.nickname=data.nickname||'Rookie';state.credits=data.credits||0;
     state.upgrades={...state.upgrades,...(data.upgrades||{})};state.loadout={...state.loadout,...(data.loadout||{})};
     if(data.contracts)state.contracts={...state.contracts,...data.contracts};
-    state.roundWinsA=data.round_wins||0;
+    state.roundWinsA=data.round_wins||0;state.upgradePoints=data.addition_points||0;
     $('credits').textContent=state.credits;renderContractBoard();renderMatchSetup();
   }else await persistProgress();
 }
 let saveChain=Promise.resolve();
 function persistProgress(){
   if(!supabase||!state.user)return;
-  const payload={user_id:state.user.id,nickname:state.nickname,credits:state.credits,round_wins:state.roundWinsA,upgrades:state.upgrades,loadout:state.loadout,contracts:state.contracts,updated_at:new Date().toISOString()};
+  const payload={user_id:state.user.id,nickname:state.nickname,credits:state.credits,round_wins:state.roundWinsA,addition_points:state.upgradePoints,upgrades:state.upgrades,loadout:state.loadout,contracts:state.contracts,updated_at:new Date().toISOString()};
   saveChain=saveChain.then(()=>supabase.from('worth_player_data').upsert(payload,{onConflict:'user_id'})).then(({error})=>{if(error)console.warn('Progress save:',error.message);}).catch(console.error);
 }
 function socketUrl(){
@@ -444,7 +444,7 @@ async function queueMatch(){
   ws.addEventListener('open',async()=>{
     const {data}=await supabase?.auth.getSession()||{data:{session:null}};
     ws.send(JSON.stringify({type:'hello',token:data.session?.access_token||null,nickname:state.nickname}));
-    ws.send(JSON.stringify({type:'queue',map:state.map,mode:state.mode,loadout:state.loadout,upgrades:state.upgrades}));
+    ws.send(JSON.stringify({type:'queue',map:state.map,mode:state.mode,loadout:state.loadout,upgrades:state.upgrades,additionPoints:state.upgradePoints}));
     $('match-status').textContent='Searching for another player…';
   });
   ws.addEventListener('message',event=>{
@@ -458,7 +458,7 @@ function cancelQueue(){state.queued=false;state.socket?.close();state.socket=nul
 function handleServerMessage(msg){
   if(msg.type==='queued'){$('match-status').textContent='Queued · '+msg.position+' player(s) ahead';return;}
   if(msg.type==='matchFound'){
-    state.roomId=msg.roomId;state.local=false;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
+    state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
     $('zone-hud').hidden=false;state.screen='online';buildWorld('practice',msg.map||state.map);$('world-name').textContent=msg.map.toUpperCase();toast('MATCH FOUND · FIRST TO 5 ROUNDS');return;
   }
   if(msg.type==='snapshot'){
@@ -468,11 +468,9 @@ function handleServerMessage(msg){
     if(msg.roundWins){state.roundWinsA=msg.roundWins.self||0;state.roundWinsB=msg.roundWins.opponent||0;}
     updateScoreHud();if(msg.zoneOwner)$('zone-note').textContent=msg.zoneOwner==='self'?'Your team controls the center':msg.zoneOwner==='opponent'?'Opponent controls the center':'Contested · Move into the center';
   }
-  if(msg.type==='roundEnd'){toast((msg.winner==='self'?'ROUND WON':'ROUND LOST')+' · '+msg.selfWins+'–'+msg.opponentWins);if(msg.winner==='opponent'&&state.mode==='addition'){state.upgradePoints+=3;renderMatchSetup();persistProgress();}}
+  if(msg.type==='roundEnd'){toast((msg.winner==='self'?'ROUND WON':'ROUND LOST')+' · '+msg.selfWins+'–'+msg.opponentWins);if(msg.additionPoints!==undefined){state.upgradePoints=msg.additionPoints;renderMatchSetup();persistProgress();}}
   if(msg.type==='matchEnd'){
-    state.credits+=msg.winner==='self'?350:100;state.completedMatches++;grantContractProgress('matches',1);
-    if(msg.winner==='opponent'&&state.mode==='addition')state.upgradePoints+=3;
-    $('credits').textContent=state.credits;persistProgress();
+    state.completedMatches++;grantContractProgress('matches',1);persistProgress();
     $('result-title').textContent=msg.winner==='self'?'YOU WON.':'GOOD MATCH.';
     $('result-copy').textContent=msg.winner==='self'?'Match win · +350 credits.':'Match complete · +100 credits · +3 Addition points.';
     $('result-banner').hidden=false;state.socket?.close();$('zone-hud').hidden=true;state.screen='lobby';buildWorld('lobby',state.map);
@@ -490,7 +488,7 @@ function updateRemotePlayers(players){
   }
   for(const [id,mesh] of remotes){if(!seen.has(id)){scene.remove(mesh);remotes.delete(id);}}
 }
-function msgOwnId(){return state.session?.user?.id||'guest';}
+function msgOwnId(){return state.playerId;}
 function sendInput(){
   if(state.socket?.readyState!==WebSocket.OPEN||!state.roomId)return;
   state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space','ControlLeft'].includes(k)),yaw,roll:rolling,crouch:crouching}));
