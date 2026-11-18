@@ -1,0 +1,27 @@
+name: WORTH client checks
+
+on:
+  push:
+    branches: [worth-client]
+    paths:
+      - "worth/**"
+      - ".github/workflows/worth-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check browser JavaScript syntax
+        run: node --input-type=module --check < worth/app.js
+      - name: Check public config syntax
+        run: node --check worth/config.js
+      - name: Check required client files
+        run: test -s worth/index.html && test -s worth/style.css && test -s worth/app.js
