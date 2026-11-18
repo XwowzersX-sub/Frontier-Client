@@ -202,6 +202,7 @@ function onKeyDown(e){
   if(e.repeat)return;
   keys.add(e.code);
   if(e.code==='KeyE')interact();
+  if(e.code==='KeyU'&&state.screen==='online'){openModal('pad-modal');renderMatchSetup();}
   if(e.code==='Space'){
     if(rolling){rolling=false;rollTime=0;toast('ROLL CANCELLED');}
     else if(onGround){velocity.y=8.1+state.upgrades.jump*.35;onGround=false;}
@@ -301,7 +302,7 @@ function updateScoreHud(){
   $('zone-note').textContent='Round wins '+state.roundWinsA+' — '+state.roundWinsB+' · first to five';
 }
 function localPractice(){
-  state.local=true;state.screen='practice';state.scoreA=0;state.scoreB=0;state.roundWinsA=0;state.roundWinsB=0;state.scoreTimer=0;
+  state.local=true;state.screen='practice';state.scoreA=0;state.scoreB=0;state.roundWinsA=0;state.roundWinsB=0;state.scoreTimer=0;state.nextCheckpoint=0;localZoneTimer=0;
   $('welcome-screen').hidden=true;$('pad-modal').hidden=true;$('match-modal').hidden=true;$('zone-hud').hidden=false;
   buildWorld('practice',state.map);
   document.exitPointerLock?.();
@@ -368,7 +369,8 @@ function renderMatchSetup(){
   document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===state.mode);b.onclick=()=>{state.mode=b.dataset.mode;renderMatchSetup();};});
   const panel=$('loadout-panel');
   if(state.mode==='loadout'){
-    panel.innerHTML='<div class="loadout-card"><h3>MOVEMENT / SUPPORT GEAR</h3>'+Object.entries(GEAR).map(([slot,items])=>'<div class="gear-row"><span>'+slot.toUpperCase()+'</span><b>'+state.loadout[slot]+'</b></div>').join('')+'</div><p class="muted" style="margin-top:10px">This mode uses movement and support abilities. Your style trail is cosmetic.</p>';
+    panel.innerHTML='<div class="loadout-card"><h3>MOVEMENT / SUPPORT GEAR</h3>'+Object.entries(GEAR).map(([slot,items])=>'<div class="gear-row"><span>'+slot.toUpperCase()+'</span><select data-gear="'+slot+'">'+items.map(item=>'<option '+(state.loadout[slot]===item?'selected':'')+'>'+item+'</option>').join('')+'</select></div>').join('')+'</div><p class="muted" style="margin-top:10px">This mode uses movement and support abilities. Your style trail is cosmetic.</p>';
+    panel.querySelectorAll('[data-gear]').forEach(sel=>sel.addEventListener('change',()=>{state.loadout[sel.dataset.gear]=sel.value;sendProfileUpdate();}));
   }else{
     panel.innerHTML='<div class="loadout-card"><h3>ADDITION · '+state.upgradePoints+' POINTS</h3><p class="muted">After each match loss, earn three points to distribute.</p><div class="upgrade-grid">'+[
       ['moveSpeed','Movement speed','Run faster'],
@@ -381,7 +383,7 @@ function renderMatchSetup(){
       const id=b.dataset.upgrade,delta=Number(b.dataset.delta);
       if(delta>0&&state.upgradePoints<=0){toast('NO ADDITION POINTS AVAILABLE');return;}
       if(delta<0&&state.upgrades[id]<=0)return;
-      state.upgrades[id]+=delta;state.upgradePoints-=delta;renderMatchSetup();persistProgress();
+      state.upgrades[id]+=delta;state.upgradePoints-=delta;renderMatchSetup();sendProfileUpdate();
     }));
   }
 }
@@ -472,9 +474,12 @@ function handleServerMessage(msg){
   if(msg.type==='matchEnd'){
     state.completedMatches++;grantContractProgress('matches',1);persistProgress();
     $('result-title').textContent=msg.winner==='self'?'YOU WON.':'GOOD MATCH.';
-    $('result-copy').textContent=msg.winner==='self'?'Match win · +350 credits.':'Match complete · +100 credits · +3 Addition points.';
+    $('result-copy').textContent=msg.winner==='self'?'Match win · 350 credits awarded.':'Match complete · 100 credits awarded.';
     $('result-banner').hidden=false;state.socket?.close();$('zone-hud').hidden=true;state.screen='lobby';buildWorld('lobby',state.map);
   }
+  if(msg.type==='creditsAwarded'){state.credits=Number(msg.totalCredits)||state.credits;$('credits').textContent=state.credits;persistProgress();}
+  if(msg.type==='notice')toast(msg.message||'MATCH UPDATE');
+  if(msg.type==='backToLobby'){state.screen='lobby';buildWorld('lobby',state.map);$('zone-hud').hidden=true;}
   if(msg.type==='error')toast(msg.message||'SERVER ERROR');
 }
 function updateRemotePlayers(players){
@@ -489,6 +494,10 @@ function updateRemotePlayers(players){
   for(const [id,mesh] of remotes){if(!seen.has(id)){scene.remove(mesh);remotes.delete(id);}}
 }
 function msgOwnId(){return state.playerId;}
+function sendProfileUpdate(){
+  if(state.socket?.readyState===WebSocket.OPEN&&state.roomId)state.socket.send(JSON.stringify({type:'profileUpdate',loadout:state.loadout,upgrades:state.upgrades,additionPoints:state.upgradePoints}));
+  persistProgress();
+}
 function sendInput(){
   if(state.socket?.readyState!==WebSocket.OPEN||!state.roomId)return;
   state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space','ControlLeft'].includes(k)),yaw,roll:rolling,crouch:crouching}));
@@ -501,11 +510,12 @@ function animate(){
   for(const cp of checkpoints){cp.rotation.y+=dt*.5;cp.position.y=.55+Math.sin(performance.now()*.001+cp.position.x)*.12;}
   updateInteractable();
   if(currentWorld==='practice'&&state.local){
-    localZoneTimer+=dt;
-    if(player.position.length()<2.4)localZoneTimer+=dt*1.4;
-    if(localZoneTimer>=6){localZoneTimer=0;scoreLocalZone();grantContractProgress('zone',6);}
-    state.scoreTimer+=dt;
-    if(state.scoreTimer>1){state.scoreTimer=0;grantContractProgress('checkpoints',1);}
+    const inside=player.position.length()<2.45;
+    if(inside){localZoneTimer+=dt;grantContractProgress('zone',dt);}
+    else localZoneTimer=Math.max(0,localZoneTimer-dt*.35);
+    if(localZoneTimer>=5.5){localZoneTimer=0;scoreLocalZone();}
+    const checkpoint=checkpoints[state.nextCheckpoint%Math.max(1,checkpoints.length)];
+    if(checkpoint&&player.position.distanceTo(checkpoint.position)<1.25){state.nextCheckpoint++;grantContractProgress('checkpoints',1);toast('CHECKPOINT +1');}
   }
   if(state.socket?.readyState===WebSocket.OPEN){sendAccumulator+=dt;if(sendAccumulator>.05){sendAccumulator=0;sendInput();}}
   renderer.render(scene,camera);
