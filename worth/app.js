@@ -30,8 +30,9 @@ const state = {
 };
 const keys = new Set();
 let renderer,scene,camera,clock,player,playerModel,worldGroup,zoneGroup;
-let yaw=0,pitch=.18,cameraDistance=6.5,sensitivity=1;
+let yaw=0,pitch=.18,cameraDistance=5.2,sensitivity=1;
 let velocity=new THREE.Vector3(), onGround=true, crouching=false, rolling=false, rollTime=0, rollDir=new THREE.Vector3(0,0,-1);
+let aiming=false, landingPulse=0;
 let nearest=null, interactables=[], checkpoints=[], remotes=new Map(), toastTimer=0;
 let localZoneTimer=0, zoneMaterial, zoneRing, currentWorld='lobby';
 const UP = new THREE.Vector3(0,1,0);
@@ -56,7 +57,7 @@ function init(){
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x0a1020);
   scene.fog=new THREE.FogExp2(0x0a1020,.022);
-  camera=new THREE.PerspectiveCamera(68,innerWidth/innerHeight,.1,260);
+  camera=new THREE.PerspectiveCamera(74,innerWidth/innerHeight,.1,260);
   clock=new THREE.Clock();
   scene.add(new THREE.HemisphereLight(0xaedaff,0x15152b,2.1));
   const keyLight=new THREE.DirectionalLight(0xffffff,2.3);
@@ -75,9 +76,25 @@ function init(){
   loadSession();
   onResize();
   addEventListener('resize',onResize);
-  renderer.domElement.addEventListener('click',()=>{if(!$('welcome-screen').hidden&&state.screen==='welcome')return;if(!document.pointerLockElement)renderer.domElement.requestPointerLock?.();});
-  document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElement===renderer.domElement)toast('MOUSE LOOK ACTIVE · ESC TO RELEASE');});
-  document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer.domElement){yaw-=e.movementX*.0022*sensitivity;pitch=Math.max(-.12,Math.min(.62,pitch+e.movementY*.0018*sensitivity));}});
+  renderer.domElement.addEventListener('click',()=>{if(!canUseGameControls())return;if(!document.pointerLockElement)renderer.domElement.requestPointerLock?.();});
+  renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+  renderer.domElement.addEventListener('mousedown',e=>{
+    if(e.button!==2||!canUseGameControls())return;
+    e.preventDefault();
+    setAiming(true);
+    if(!document.pointerLockElement)renderer.domElement.requestPointerLock?.();
+  });
+  document.addEventListener('mouseup',e=>{if(e.button===2)setAiming(false);});
+  document.addEventListener('pointerlockchange',()=>{
+    if(document.pointerLockElement===renderer.domElement)toast('MOUSE LOOK ACTIVE · RMB TO FOCUS');
+    else if(aiming)setAiming(false);
+  });
+  document.addEventListener('mousemove',e=>{
+    if(document.pointerLockElement===renderer.domElement){
+      yaw-=e.movementX*.0022*sensitivity;
+      pitch=Math.max(-.72,Math.min(.72,pitch+e.movementY*.0018*sensitivity));
+    }
+  });
   document.addEventListener('keydown',onKeyDown);
   document.addEventListener('keyup',onKeyUp);
   renderer.setAnimationLoop(animate);
@@ -103,17 +120,78 @@ function addLabel(text,x,y,z,color='#c9fbff',scale=1){
 function createPlayer(color=0x5ce5ed){
   const g=new THREE.Group();
   const bodyMat=mat(color,.42,.3,color,.22),dark=mat(0x18243c,.55,.25),visor=mat(0xc8fbff,.22,.5,0x54dfea,.55);
-  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.36,.72,5,10),bodyMat);body.position.y=1.02;body.castShadow=true;body.name='body';g.add(body);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(.28,18,14),dark);head.position.y=1.72;head.castShadow=true;g.add(head);
-  const face=new THREE.Mesh(new THREE.SphereGeometry(.19,18,12),visor);face.scale.set(1,.53,.38);face.position.set(0,1.74,-.22);g.add(face);
+  const bodyPivot=new THREE.Group();bodyPivot.position.y=1.02;g.add(bodyPivot);
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.35,.68,5,10),bodyMat);
+  body.castShadow=true;body.name='body';bodyPivot.add(body);
+
+  const headPivot=new THREE.Group();headPivot.position.set(0,1.73,0);g.add(headPivot);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.28,20,16),dark);head.castShadow=true;headPivot.add(head);
+  const face=new THREE.Mesh(new THREE.SphereGeometry(.19,18,12),visor);
+  face.scale.set(1,.55,.42);face.position.set(0,.015,-.225);headPivot.add(face);
+
+  // A compact focus camera is visibly strapped to the player's helmet.
+  const headStrap=new THREE.Mesh(new THREE.TorusGeometry(.285,.027,8,36),mat(0x52647f,.45,.55));
+  headStrap.rotation.x=Math.PI/2;headStrap.position.y=.055;headPivot.add(headStrap);
+  const cameraMount=new THREE.Mesh(new THREE.BoxGeometry(.24,.13,.15),mat(0x101a30,.32,.55,0x2a92b3,.3));
+  cameraMount.position.set(0,.07,-.255);headPivot.add(cameraMount);
+  const cameraLens=new THREE.Mesh(new THREE.SphereGeometry(.067,16,12),mat(0x9cf8ff,.14,.65,0x39d9ef,1.6));
+  cameraLens.scale.set(1,1,.45);cameraLens.position.set(0,.07,-.345);headPivot.add(cameraLens);
+  const lensRing=new THREE.Mesh(new THREE.TorusGeometry(.078,.014,8,24),mat(0x6eeaf4,.28,.5,0x36d7ee,.8));
+  lensRing.position.set(0,.07,-.342);headPivot.add(lensRing);
   for(const side of [-1,1]){
-    const arm=new THREE.Mesh(new THREE.CapsuleGeometry(.105,.52,4,8),dark);arm.position.set(side*.43,1.02,0);arm.rotation.z=side*-.14;g.add(arm);
-    const leg=new THREE.Mesh(new THREE.CapsuleGeometry(.14,.46,4,8),dark);leg.position.set(side*.18,.35,0);leg.name='leg'+side;g.add(leg);
+    const strapArm=new THREE.Mesh(new THREE.BoxGeometry(.045,.09,.22),mat(0x52647f,.48,.4));
+    strapArm.position.set(side*.275,.045,-.04);headPivot.add(strapArm);
+  }
+  const cameraAnchor=new THREE.Object3D();cameraAnchor.position.set(0,.07,-.42);headPivot.add(cameraAnchor);
+
+  const arms=[],legs=[];
+  for(const side of [-1,1]){
+    const arm=new THREE.Group();arm.position.set(side*.42,1.43,0);g.add(arm);
+    const upperArm=new THREE.Mesh(new THREE.CapsuleGeometry(.105,.47,4,9),dark);
+    upperArm.position.y=-.29;upperArm.castShadow=true;arm.add(upperArm);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(.105,12,10),mat(0x263550,.5,.28));
+    hand.position.y=-.57;arm.add(hand);arms.push(arm);
+
+    const leg=new THREE.Group();leg.position.set(side*.18,.62,0);g.add(leg);
+    const lowerBody=new THREE.Mesh(new THREE.CapsuleGeometry(.135,.48,4,9),dark);
+    lowerBody.position.y=-.31;lowerBody.castShadow=true;leg.add(lowerBody);
+    const boot=new THREE.Mesh(new THREE.BoxGeometry(.25,.13,.36),mat(0x17243d,.42,.38,0x274c6b,.18));
+    boot.position.set(0,-.59,-.045);leg.add(boot);legs.push(leg);
   }
   const ring=new THREE.Mesh(new THREE.TorusGeometry(.42,.035,8,36),new THREE.MeshStandardMaterial({color:color,emissive:color,emissiveIntensity:.65}));
   ring.rotation.x=Math.PI/2;ring.position.y=.05;g.add(ring);
-  g.userData={body,head,arms:g.children.filter(c=>c.position.y>0.8&&c.geometry?.type==='CapsuleGeometry'),ring,baseColor:color};
+  g.userData={
+    body,bodyPivot,head,headPivot,arms,legs,ring,cameraAnchor,baseColor:color,
+    animTime:Math.random()*4,targetPosition:new THREE.Vector3(),targetYaw:0
+  };
   return g;
+}
+function animateCharacter(model,dt,moving,isRolling,isCrouching,inAir,landPulse=0){
+  const rig=model?.userData;if(!rig)return;
+  rig.animTime=(rig.animTime||0)+dt*(moving?8.8:1.55);
+  const phase=rig.animTime;
+  const stride=moving?1:0;
+  const crouch=isCrouching?1:0;
+  const airborne=inAir?1:0;
+  const roll=isRolling?1:0;
+  const gait=Math.sin(phase);
+  rig.legs.forEach((leg,index)=>{
+    const side=index===0?-1:1;
+    leg.rotation.x=gait*stride*.62*side+airborne*(index===0?-.22:.24)+roll*.2;
+    leg.rotation.z=side*(crouch*.1+roll*.16);
+  });
+  rig.arms.forEach((arm,index)=>{
+    const side=index===0?-1:1;
+    arm.rotation.x=-gait*stride*.55*side-airborne*.72+roll*(index===0?-.55:.55);
+    arm.rotation.z=side*(.12+crouch*.3+airborne*.1);
+  });
+  rig.bodyPivot.rotation.x=(moving?.055:0)+airborne*.06+roll*-.32+crouch*.18;
+  rig.bodyPivot.position.y=1.02+Math.sin(phase*2)*.025*(moving?1:.45)-landPulse*.34;
+  rig.bodyPivot.scale.set(1,1-landPulse*.16,1);
+  rig.headPivot.rotation.x=airborne*-.06+roll*.08;
+  rig.headPivot.rotation.z=Math.sin(phase*.5)*.025;
+  rig.ring.scale.setScalar(1+(moving?.045:0)+(roll?.12:0));
+  if(rig.body.material)rig.body.material.emissiveIntensity=isRolling?.65:(moving?.3:.2);
 }
 function clearGroup(group){while(group.children.length){const o=group.children.pop();o.parent=null;}}
 function buildWorld(kind='lobby',mapName=MAPS[0]){
@@ -212,7 +290,7 @@ function onKeyDown(e){
     if(moving&&!rolling){rolling=true;crouching=false;rollTime=.78;rollDir.copy(moveDirection());if(rollDir.lengthSq()<.01)rollDir.set(0,0,-1);toast('ROLL BOOST');}
     else if(!moving)crouching=true;
   }
-  if(e.code==='Escape')keys.clear();
+  if(e.code==='Escape'){keys.clear();setAiming(false);}
 }
 function onKeyUp(e){keys.delete(e.code);if(e.code==='ControlLeft'||e.code==='ControlRight')crouching=false;}
 function moveDirection(){
@@ -227,6 +305,7 @@ function moveDirection(){
 }
 function updatePlayer(dt){
   if(!player)return;
+  const wasGrounded=onGround;
   const direction=moveDirection();
   const moving=direction.lengthSq()>.01;
   const baseSpeed=6.1+state.upgrades.moveSpeed*.35;
@@ -245,21 +324,53 @@ function updatePlayer(dt){
   player.position.x=THREE.MathUtils.clamp(player.position.x,-limit,limit);
   player.position.z=THREE.MathUtils.clamp(player.position.z,-limit,limit);
   if(player.position.y<0){player.position.y=0;velocity.y=0;onGround=true;}
+  if(!wasGrounded&&onGround&&velocity.y===0)landingPulse=.18;
   player.rotation.y=yaw;
-  player.scale.y=THREE.MathUtils.lerp(player.scale.y,crouching?.62:1,Math.min(1,dt*12));
-  if(rolling)player.rotation.z=Math.sin(performance.now()*.02)*.35;
-  else player.rotation.z=THREE.MathUtils.lerp(player.rotation.z,0,Math.min(1,dt*8));
-  const body=player.userData.body;
-  if(body){body.material.emissiveIntensity=rolling?.5:.2;}
-  if(moving)state.checkpointCount+=0;
-  updateCamera(dt);
+  player.scale.y=THREE.MathUtils.lerp(player.scale.y,crouching?.9:1,Math.min(1,dt*12));
+  if(rolling){
+    const progress=1-Math.max(0,rollTime)/.78;
+    player.rotation.z=Math.sin(progress*Math.PI)*.48;
+  }else player.rotation.z=THREE.MathUtils.lerp(player.rotation.z,0,Math.min(1,dt*8));
+  animateCharacter(player,dt,moving,rolling,crouching,!onGround,landingPulse);
+  landingPulse=Math.max(0,landingPulse-dt);
 }
 function updateCamera(dt){
-  const target=player.position.clone().add(new THREE.Vector3(0,1.15,0));
-  const horizontal=new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw)).multiplyScalar(cameraDistance*Math.cos(pitch));
-  const desired=target.clone().add(horizontal).add(new THREE.Vector3(0,cameraDistance*Math.sin(pitch)+1.5,0));
-  camera.position.lerp(desired,1-Math.exp(-7*dt));
-  camera.lookAt(target);
+  if(!player)return;
+  const target=player.position.clone().add(new THREE.Vector3(0,1.38,0));
+  const forward=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+  const right=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
+  if(aiming){
+    // The viewpoint is placed just in front of the head-mounted camera lens.
+    const lensPosition=player.localToWorld(new THREE.Vector3(0,1.80,-.43));
+    const sway=Math.sin((player.userData.animTime||0)*1.5)*.006;
+    lensPosition.y+=sway;
+    const cp=Math.cos(pitch),sp=Math.sin(pitch);
+    const lookDirection=new THREE.Vector3(forward.x*cp,-sp,forward.z*cp);
+    camera.position.copy(lensPosition);
+    camera.lookAt(lensPosition.clone().add(lookDirection.multiplyScalar(12)));
+  }else{
+    const desired=target.clone()
+      .add(forward.clone().multiplyScalar(-cameraDistance))
+      .add(right.multiplyScalar(.55))
+      .add(new THREE.Vector3(0,1.05+cameraDistance*Math.sin(pitch),0));
+    camera.position.lerp(desired,1-Math.exp(-8.5*dt));
+    camera.lookAt(target);
+  }
+  const targetFov=aiming?62:74;
+  const nextFov=THREE.MathUtils.lerp(camera.fov,targetFov,1-Math.exp(-7*dt));
+  if(Math.abs(camera.fov-nextFov)>.01){camera.fov=nextFov;camera.updateProjectionMatrix();}
+}
+function canUseGameControls(){
+  return $('welcome-screen').hidden&&!document.querySelector('.modal-wrap:not([hidden])')&&$('result-banner').hidden;
+}
+function setAiming(value){
+  const next=!!value;
+  if(aiming===next)return;
+  aiming=next;
+  document.body.classList.toggle('aiming',aiming);
+  $('aim-reticle').hidden=!aiming;
+  $('aim-status').hidden=!aiming;
+  if(state.socket?.readyState===WebSocket.OPEN&&state.roomId)sendInput();
 }
 function updateInteractable(){
   nearest=null;let best=4.2;
@@ -488,8 +599,9 @@ function updateRemotePlayers(players){
     if(p.id===msgOwnId())continue;
     seen.add(p.id);
     let mesh=remotes.get(p.id);
-    if(!mesh){mesh=createPlayer(0x9b86ff);scene.add(mesh);remotes.set(p.id,mesh);}
-    mesh.position.set(p.x||0,p.y||0,p.z||0);mesh.rotation.y=p.yaw||0;
+    if(!mesh){mesh=createPlayer(0x9b86ff);mesh.userData.justCreated=true;scene.add(mesh);remotes.set(p.id,mesh);}
+    mesh.userData.targetPosition.set(p.x||0,p.y||0,p.z||0);mesh.userData.targetYaw=p.yaw||0;
+    if(mesh.userData.justCreated){mesh.position.copy(mesh.userData.targetPosition);mesh.rotation.y=mesh.userData.targetYaw;mesh.userData.justCreated=false;}
   }
   for(const [id,mesh] of remotes){if(!seen.has(id)){scene.remove(mesh);remotes.delete(id);}}
 }
@@ -500,24 +612,44 @@ function sendProfileUpdate(){
 }
 function sendInput(){
   if(state.socket?.readyState!==WebSocket.OPEN||!state.roomId)return;
-  state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space','ControlLeft'].includes(k)),yaw,roll:rolling,crouch:crouching}));
+  state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space','ControlLeft','ControlRight'].includes(k)),yaw,roll:rolling,crouch:crouching,aim:aiming}));
 }
 let sendAccumulator=0;
+function animateRemotePlayers(realDt,simDt){
+  for(const mesh of remotes.values()){
+    const target=mesh.userData.targetPosition;
+    const gap=mesh.position.distanceTo(target);
+    mesh.position.lerp(target,1-Math.exp(-15*realDt));
+    const angle=Math.atan2(
+      Math.sin(mesh.userData.targetYaw-mesh.rotation.y),
+      Math.cos(mesh.userData.targetYaw-mesh.rotation.y)
+    );
+    mesh.rotation.y+=angle*(1-Math.exp(-15*realDt));
+    animateCharacter(mesh,simDt,gap>.025,false,false,false,0);
+  }
+}
 function animate(){
-  const dt=Math.min(clock.getDelta(),.04);
-  updatePlayer(dt);
-  if(zoneRing)zoneRing.rotation.z+=dt*.24;
-  for(const cp of checkpoints){cp.rotation.y+=dt*.5;cp.position.y=.55+Math.sin(performance.now()*.001+cp.position.x)*.12;}
+  const realDt=Math.min(clock.getDelta(),.04);
+  const simDt=realDt*(aiming?.38:1);
+  updatePlayer(simDt);
+  updateCamera(realDt);
+  if(zoneRing)zoneRing.rotation.z+=simDt*.24;
+  for(const cp of checkpoints){
+    cp.userData.animTime=(cp.userData.animTime||0)+simDt;
+    cp.rotation.y+=simDt*.5;
+    cp.position.y=.55+Math.sin(cp.userData.animTime*2+cp.position.x)*.12;
+  }
+  animateRemotePlayers(realDt,simDt);
   updateInteractable();
   if(currentWorld==='practice'&&state.local){
     const inside=player.position.length()<2.45;
-    if(inside){localZoneTimer+=dt;grantContractProgress('zone',dt);}
-    else localZoneTimer=Math.max(0,localZoneTimer-dt*.35);
+    if(inside){localZoneTimer+=simDt;grantContractProgress('zone',simDt);}
+    else localZoneTimer=Math.max(0,localZoneTimer-simDt*.35);
     if(localZoneTimer>=5.5){localZoneTimer=0;scoreLocalZone();}
     const checkpoint=checkpoints[state.nextCheckpoint%Math.max(1,checkpoints.length)];
     if(checkpoint&&player.position.distanceTo(checkpoint.position)<1.25){state.nextCheckpoint++;grantContractProgress('checkpoints',1);toast('CHECKPOINT +1');}
   }
-  if(state.socket?.readyState===WebSocket.OPEN){sendAccumulator+=dt;if(sendAccumulator>.05){sendAccumulator=0;sendInput();}}
+  if(state.socket?.readyState===WebSocket.OPEN){sendAccumulator+=realDt;if(sendAccumulator>.05){sendAccumulator=0;sendInput();}}
   renderer.render(scene,camera);
 }
 function toast(message){
